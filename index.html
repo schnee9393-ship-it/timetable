@@ -1,0 +1,918 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spring Timetable Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Inter+Tight:wght@700;800&display=swap">
+<style>
+/* Layout: registrar's planning desk — three-step flow (track → fall record → spring timetable) under a live requirement ledger; catalog feeds a weekly grid */
+:root{
+  --paper:#f3f5f8; --card:#ffffff; --ink:#172230; --muted:#5b6878; --line:#d9e0e8; --soft:#edf1f5;
+  --accent:#1d5fa6; --accent-soft:#e1ebf7;
+  --ny:#b4233a; --ny-soft:#f9e3e7;
+  --nys:#b45309; --nys-soft:#fbead7;
+  --llm:#4338ca; --llm-soft:#e6e5fb;
+  --trk:#0f766e; --trk-soft:#d9f2ee;
+  --rec:#a16207; --rec-soft:#fdf1c8;
+  --pop:#a3366f; --pop-soft:#f8e2ee;
+  --exp:#7c3aed; --exp-soft:#efe6fd;
+  --ok:#15803d; --ok-soft:#dcf3e4; --bad:#b91c1c; --bad-soft:#fde2e2; --warn:#c2410c; --warn-soft:#fdeadb;
+  --f-display:"Inter Tight","IBM Plex Sans KR","Helvetica Neue",Arial,sans-serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --shadow:0 1px 2px rgba(23,34,48,.06),0 4px 14px rgba(23,34,48,.05);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0f151c; --card:#16202a; --ink:#e5ebf1; --muted:#9aa8b6; --line:#2a3846; --soft:#1d2935;
+  --accent:#6aa8ec; --accent-soft:#16304b; --ny:#f27b8e; --ny-soft:#3e1b24; --nys:#f2a15c; --nys-soft:#3b2614;
+  --llm:#a5a3fa; --llm-soft:#25264f; --trk:#4fd1c0; --trk-soft:#103a36; --rec:#f1c44e; --rec-soft:#3a3010;
+  --pop:#f08cc0; --pop-soft:#3b1a2c; --exp:#c4a2fb; --exp-soft:#2e2147;
+  --ok:#5fd59a; --ok-soft:#14352a; --bad:#f68a8a; --bad-soft:#3d1a1a; --warn:#fb9a62; --warn-soft:#3b2214;
+  --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0f151c; --card:#16202a; --ink:#e5ebf1; --muted:#9aa8b6; --line:#2a3846; --soft:#1d2935;
+  --accent:#6aa8ec; --accent-soft:#16304b; --ny:#f27b8e; --ny-soft:#3e1b24; --nys:#f2a15c; --nys-soft:#3b2614;
+  --llm:#a5a3fa; --llm-soft:#25264f; --trk:#4fd1c0; --trk-soft:#103a36; --rec:#f1c44e; --rec-soft:#3a3010;
+  --pop:#f08cc0; --pop-soft:#3b1a2c; --exp:#c4a2fb; --exp-soft:#2e2147;
+  --ok:#5fd59a; --ok-soft:#14352a; --bad:#f68a8a; --bad-soft:#3d1a1a; --warn:#fb9a62; --warn-soft:#3b2214;
+  --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+.wrap{max-width:1400px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:flex;flex-direction:column;gap:20px}
+h1{font-family:var(--f-display);font-weight:800;font-size:clamp(28px,4vw,42px);margin:0;letter-spacing:-.025em;text-wrap:balance;line-height:1.2}
+h2{font-size:17px;margin:0;font-weight:700;text-wrap:balance}
+h3{font-size:13.5px;margin:0;font-weight:700}
+p{margin:0}
+.eyebrow{font-family:var(--f-mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+header.top .lede{margin-top:8px;color:var(--muted);max-width:68ch}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:8px 14px;cursor:pointer;font-size:13px;font-weight:500}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{filter:brightness(1.08);color:#fff}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:var(--shadow)}
+@media (max-width:720px){.steps{gap:4px;padding:4px}.step{flex-direction:column;align-items:center;text-align:center;gap:4px;padding:8px 4px}.step .st span{display:none}.step .st b{font-size:12.5px}}
+.step{display:flex;align-items:center;gap:12px;border:0;background:transparent;border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;min-width:0}
+.step:hover{background:var(--soft)}
+.step[aria-current="step"]{background:var(--accent-soft)}
+.step .num{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-mono);font-weight:600;border:1.5px solid var(--line);color:var(--muted);background:var(--card)}
+.step[aria-current="step"] .num{background:var(--accent);border-color:var(--accent);color:#fff}
+.step .st{display:flex;flex-direction:column;min-width:0}
+.step .st b{font-size:14px}
+.step .st span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ledger */
+.ledger{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);min-width:0}
+.stat{padding:14px 16px;display:flex;flex-direction:column;gap:9px}
+.stat .head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lbl{font-size:12.5px;font-weight:700;color:var(--muted)}
+.big{font-family:var(--f-mono);font-size:28px;font-weight:600;line-height:1}
+.big small{font-size:12.5px;color:var(--muted);font-weight:400;font-family:var(--f-body)}
+.bar{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;position:relative}
+.bar i{display:block;height:100%;border-radius:99px;transition:width .25s}
+.bar .tick{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink);opacity:.4}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.no{background:var(--bad-soft);color:var(--bad)} .pill.off{background:var(--soft);color:var(--muted)}
+.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px;font-size:13px}
+.checks li{display:flex;gap:8px;align-items:flex-start}
+.mark{flex:none;width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;margin-top:1px}
+.mark.ok{background:var(--ok-soft);color:var(--ok)} .mark.no{background:var(--bad-soft);color:var(--bad)} .mark.wait{background:var(--soft);color:var(--muted)}
+.checks .d{display:block;font-size:11.5px;color:var(--muted)}
+.empty-cta{font-size:13px;color:var(--muted)}
+.linkbtn{border:0;background:none;padding:0;color:var(--accent);cursor:pointer;font-weight:600;font-size:13px}
+
+/* step 1 */
+.panel-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.panel-b{padding:16px 18px}
+.tracks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:980px){.tracks{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:560px){.tracks{grid-template-columns:minmax(0,1fr)}}
+.tcard{position:relative;display:flex;flex-direction:column;gap:6px;border:1.5px solid var(--line);border-radius:12px;padding:14px 14px 12px;cursor:pointer;background:var(--card);text-align:left}
+.tcard:hover{border-color:var(--trk)}
+.tcard[aria-checked="true"]{border-color:var(--trk);background:var(--trk-soft)}
+.tcard .tname{font-weight:700;font-size:14.5px}
+.tcard .ten{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.03em}
+.tcard ul{margin:2px 0 0;padding-left:16px;font-size:12.5px;color:var(--ink)}
+.tcard ul li{margin-bottom:2px}
+.tcard .radio{position:absolute;top:12px;right:12px;width:18px;height:18px;border-radius:50%;border:1.5px solid var(--muted)}
+.tcard[aria-checked="true"] .radio{border:5px solid var(--trk)}
+.nybox{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px}
+@media (max-width:860px){.nybox{grid-template-columns:minmax(0,1fr)}}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;padding:3px;background:var(--soft);gap:3px;flex-wrap:wrap}
+.seg button{border:0;background:transparent;border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;font-weight:500}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ny);box-shadow:var(--shadow);font-weight:700}
+.opt{display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:8px 10px;border-radius:9px;border:1px solid var(--line);cursor:pointer}
+.opt input{margin-top:3px;accent-color:var(--ny)}
+.opt:has(input:checked){border-color:var(--ny);background:var(--ny-soft)}
+.req-table{width:100%;border-collapse:collapse;font-size:13px}
+.req-table th,.req-table td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--soft);vertical-align:top}
+.req-table th{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.03em}
+.scroll-x{overflow-x:auto}
+
+/* catalog */
+.work{display:grid;grid-template-columns:minmax(0,440px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1020px){.work{grid-template-columns:minmax(0,1fr)}}
+.cat-h{padding:14px 14px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:9px}
+.search{width:100%;padding:8px 11px;border-radius:9px;border:1px solid var(--line);background:var(--paper)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;border:1px solid var(--line);background:transparent;border-radius:99px;padding:3px 11px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.chip .n{font-family:var(--f-mono);opacity:.7;margin-left:3px}
+.toggle{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--muted)}
+.toggle input{accent-color:var(--accent)}
+.catalog{max-height:calc(100vh - 120px);overflow:auto;padding:4px 8px 14px}
+@media (max-width:1020px){.catalog{max-height:none}}
+.group-h{position:sticky;top:0;background:var(--card);z-index:2;padding:12px 6px 7px;display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--soft)}
+.group-h h3{display:flex;gap:6px;align-items:baseline}
+.group-h h3 .n{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);font-weight:500}
+.group-h p{font-size:12px;color:var(--muted)}
+.course{display:grid;grid-template-columns:22px minmax(0,1fr);gap:9px;padding:10px 8px;border-radius:10px;cursor:pointer;border:1px solid transparent;margin-top:4px}
+.course:hover{background:var(--soft)}
+.course.on{background:var(--accent-soft);border-color:var(--accent)}
+.course.recd{border-color:color-mix(in srgb,var(--rec) 45%,transparent)}
+.course.off{opacity:.48;cursor:not-allowed}
+.course.conflict{border-color:var(--bad);background:var(--bad-soft)}
+.box{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--muted);display:grid;place-items:center;margin-top:2px;font-size:12px;color:#fff}
+.course.on .box{background:var(--accent);border-color:var(--accent)}
+.c-top{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
+.c-no{font-family:var(--f-mono);font-weight:600;font-size:12.5px}
+.c-ko{font-weight:600}
+.c-en{color:var(--muted);font-size:12px}
+.c-meta{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);display:flex;flex-wrap:wrap;gap:3px 11px;margin-top:3px}
+.c-note{font-size:11.5px;margin-top:4px;color:var(--muted);line-height:1.45}
+.c-why{font-size:12px;margin-top:4px;color:var(--rec);font-weight:600}
+.c-pop{font-size:12px;margin-top:3px;color:var(--pop)}
+.tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:99px;letter-spacing:.01em;white-space:nowrap}
+.t-nyreq{background:var(--ny-soft);color:var(--ny)} .t-nysub{background:var(--nys-soft);color:var(--nys)} .t-p1{background:var(--nys-soft);color:var(--nys)}
+.t-llm{background:var(--llm-soft);color:var(--llm)} .t-trk{background:var(--trk-soft);color:var(--trk)} .t-trkreq{background:var(--trk);color:#fff}
+.t-rec{background:var(--rec-soft);color:var(--rec)} .t-pop{background:var(--pop-soft);color:var(--pop)}
+.t-exp,.t-app,.t-extn{background:var(--exp-soft);color:var(--exp)} .t-llmexp{background:var(--exp-soft);color:var(--exp)}
+.t-jd,.t-l1,.t-done,.t-jterm,.t-consent{background:var(--soft);color:var(--muted)}
+
+/* grid */
+.gridcol{position:sticky;top:12px;display:flex;flex-direction:column;gap:14px}
+@media (max-width:1020px){.gridcol{position:static}}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend b{width:10px;height:10px;border-radius:3px;display:inline-block}
+.tt{position:relative;display:grid;grid-template-columns:44px repeat(5,minmax(104px,1fr));min-width:600px}
+.tt .dh{font-weight:700;font-size:13px;padding:9px 6px;border-bottom:1px solid var(--line);text-align:center}
+.tt .dh small{display:block;font-weight:400;color:var(--muted);font-size:11px}
+.tt .hours{position:relative}
+.tt .hours span{position:absolute;right:6px;transform:translateY(-50%);font-family:var(--f-mono);font-size:10.5px;color:var(--muted)}
+.tt .col{position:relative;border-left:1px solid var(--line)}
+.tt .col .hl{position:absolute;left:0;right:0;border-top:1px dashed var(--soft)}
+.blk{position:absolute;border-radius:7px;padding:4px 6px;font-size:11.5px;line-height:1.25;overflow:hidden;border-left:3px solid;display:flex;flex-direction:column;gap:1px;color:var(--ink)}
+.blk .bn{font-family:var(--f-mono);font-weight:600;font-size:10.5px}
+.blk .bt{font-weight:600}
+.blk .bm{font-family:var(--f-mono);font-size:10px;opacity:.85}
+.blk.clash{outline:2px solid var(--bad);outline-offset:-1px}
+.free{position:absolute;left:6px;right:6px;top:42%;text-align:center;font-size:12px;color:var(--muted)}
+.sub{border-top:1px solid var(--line);padding:12px 16px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.sub ul{margin:0;padding-left:18px}
+.alerts{display:flex;flex-direction:column;gap:6px}
+.alert{border-radius:9px;padding:8px 12px;font-size:13px;border:1px solid;display:flex;gap:8px}
+.alert.bad{border-color:var(--bad);background:var(--bad-soft)}
+.alert.warn{border-color:var(--warn);background:var(--warn-soft)}
+.exams{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.exams li{display:grid;grid-template-columns:86px minmax(0,1fr);gap:10px;padding:7px 0;border-bottom:1px solid var(--soft);font-size:13px}
+.exams .d{font-family:var(--f-mono);font-weight:600}
+.exams li.tight .d{color:var(--warn)}
+.navrow{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.notebox{background:var(--soft);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+
+/* step3 top */
+.s3top{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:16px;margin-bottom:20px;align-items:start}
+@media (max-width:860px){.s3top{grid-template-columns:minmax(0,1fr)}}
+.springsum{padding:16px 18px;display:flex;flex-direction:column;gap:8px;border-color:var(--accent)}
+.springsum .bigS{font-family:var(--f-mono);font-size:40px;font-weight:600;line-height:1;color:var(--accent)}
+.springsum .bigS small{font-family:var(--f-body);font-size:14px;color:var(--muted);font-weight:500;margin-left:4px}
+.springsum .rows{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12.5px}
+.springsum .rows span:nth-child(odd){color:var(--muted)}
+.springsum .rows b{font-family:var(--f-mono);font-weight:600}
+.groupinfo summary{list-style:none;cursor:pointer;padding:14px 18px;display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center}
+.groupinfo summary::-webkit-details-marker{display:none}
+.gi-t{font-weight:700;font-size:15px}
+.gi-s{grid-column:1;font-size:12.5px;color:var(--muted)}
+.gi-arrow{grid-row:1/3;grid-column:2;font-size:14px;color:var(--muted);transition:transform .2s}
+.groupinfo[open] .gi-arrow{transform:rotate(180deg)}
+.gi-body{border-top:1px solid var(--line);padding:14px 18px 18px;display:flex;flex-direction:column;gap:16px}
+.gi-grp{display:flex;flex-direction:column;gap:8px}
+.gi-grp h4{margin:0;font-size:13.5px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.gi-grp h4 .rule{font-weight:500;color:var(--muted);font-size:12.5px}
+.gi-grp h4 .st{font-size:11.5px}
+.gi-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px}
+.gi-c{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;align-items:start;padding:7px 10px;border-radius:9px;background:var(--soft);font-size:12.5px;border:1px solid transparent}
+.gi-c .no{font-family:var(--f-mono);font-weight:600}
+.gi-c .nm{font-weight:600}
+.gi-c .wh{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.gi-c.done{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+.gi-c.done .wh{color:var(--ok);font-weight:600}
+.gi-c.na{opacity:.55}
+.gi-legend{font-size:12px;color:var(--muted)}
+
+/* mobile bottom bar */
+.mbar{display:none}
+@media (max-width:1020px){
+  body.s3 .mbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:50;gap:8px;align-items:center;justify-content:space-between;
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1px solid var(--line);box-shadow:0 -4px 16px rgba(23,34,48,.08)}
+  body.s3 .wrap{padding-bottom:96px}
+  .mbar .mu{font-size:13px;color:var(--muted)} .mbar .mu b{font-family:var(--f-mono);color:var(--accent);font-size:16px}
+  .mbar .row{gap:6px}
+  .mbar .btn{padding:9px 14px}
+}
+@media (max-width:640px){.tt{min-width:0;grid-template-columns:30px repeat(5,minmax(0,1fr))}.tt .dh{padding:7px 2px;font-size:12px}.tt .dh small{display:none}
+  .blk{padding:3px 4px;font-size:10px;border-left-width:2px}.blk .bn{font-size:9.5px}.blk .bm{font-size:9px}.tt .hours span{font-size:9.5px;right:3px}.free{font-size:10px}}
+@media (max-width:560px){.wrap{padding-inline:16px}.course{padding:10px 4px}.catalog{padding:4px 4px 14px}}
+footer{font-size:12px;color:var(--muted);text-align:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">UCLA School of Law · LL.M. 2026–27</div>
+      <h1>Spring Timetable Simulator</h1>
+      <p class="lede">특화 트랙과 뉴욕 바 요건을 고르고, 가을학기에 들은 과목을 체크한 뒤 봄학기 시간표를 짜 보세요. 남은 요건과 시간이 겹치지 않는 추천 과목이 자동으로 표시됩니다.</p>
+    </div>
+    <div class="row">
+      <button class="btn" id="resetBtn" type="button">처음부터 다시</button>
+    </div>
+  </header>
+
+  <nav class="steps" aria-label="단계">
+    <button class="step" type="button" data-step="1"><span class="num">1</span><span class="st"><b>트랙·뉴욕 바 설정</b><span id="s1sum">특화 트랙과 뉴욕 바 준비 여부</span></span></button>
+    <button class="step" type="button" data-step="2"><span class="num">2</span><span class="st"><b>가을학기 이수 과목</b><span id="s2sum">들은 과목 체크</span></span></button>
+    <button class="step" type="button" data-step="3"><span class="num">3</span><span class="st"><b>봄학기 시간표</b><span id="s3sum">과목 배치</span></span></button>
+  </nav>
+
+  <section class="ledger" id="ledger" aria-label="요건 현황"></section>
+
+  <!-- STEP 1 -->
+  <section id="step1" class="card" hidden>
+    <div class="panel-h">
+      <h2>특화 트랙 (Specialization)</h2>
+      <p class="muted small">신청한 트랙을 하나 고르세요. 트랙을 신청하지 않았다면 '선택 안 함'을 고르면 됩니다. 모든 트랙은 트랙 과목 평균 B−(2.7) 이상이 필요합니다.</p>
+    </div>
+    <div class="panel-b"><div class="tracks" id="tracks" role="radiogroup" aria-label="특화 트랙"></div></div>
+    <div class="panel-h" style="border-top:1px solid var(--line)">
+      <h2>뉴욕 바 (New York Bar) 응시 요건</h2>
+      <p class="muted small">외국 법학 학위자는 Rule 520.6에 맞는 LL.M. 학점을 채워야 응시할 수 있습니다. 470(American Law in a Global Context)은 이 플래너에서 뉴욕 바 학점으로 세지 않습니다.</p>
+    </div>
+    <div class="panel-b nybox">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="seg" role="group" aria-label="뉴욕 바 준비 여부">
+          <button type="button" id="nyOff">준비하지 않음</button>
+          <button type="button" id="nyOn">뉴욕 바 요건 준비</button>
+        </div>
+        <div id="nyOpts" style="display:flex;flex-direction:column;gap:8px">
+          <div class="small muted" style="font-weight:600">기술 역량 요건 (Skills Competency) 충족 방법</div>
+          <label class="opt"><input type="radio" name="path" value="45" id="path45"><span><b>Pathway 4·5</b> — 본국 변호사 실무 1년 이상, 또는 6개월 이상 실무수습. 추가 과목 없음 (대부분 해당)</span></label>
+          <label class="opt"><input type="radio" name="path" value="1" id="path1"><span><b>Pathway 1</b> — 추가 과목으로 충족. 총 27학점, 746·763·785 중 1과목, 실무 과목 6학점, 200–399번대 2과목</span></label>
+          <label class="opt"><input type="checkbox" id="lci"><span>여름 LCI(Law &amp; Communication Intensive) 프로그램에서 475 미국 헌법을 이수했습니다</span></label>
+        </div>
+      </div>
+      <div class="scroll-x">
+        <table class="req-table">
+          <thead><tr><th>요건 (Rule 520.6)</th><th>최소</th><th>UCLA 지정 과목</th></tr></thead>
+          <tbody>
+            <tr><td>직업윤리 Professional Responsibility</td><td class="mono">2</td><td>312 · 가을 §3(LL.M.) 또는 봄 §4(LL.M.)</td></tr>
+            <tr><td>리서치·작문 Legal Research, Writing &amp; Analysis</td><td class="mono">2</td><td>406 · 가을 (봄 1개 분반)</td></tr>
+            <tr><td>미국법 개론 American Legal Studies</td><td class="mono">2</td><td>475 미국 헌법 · 가을·봄·여름 LCI</td></tr>
+            <tr><td>뉴욕 바 시험과목 Bar Subjects</td><td class="mono">6</td><td>2학점 1개: 403 · 404 · 413 · 476<br>4학점 1개: 211 §3(봄) · 230 §3(가을)<br>JD 공동: 202 · 205 · 211 · 230 · 295 · 300 · 309 · 311 · 317</td></tr>
+            <tr><td>총 학점 (470 제외)</td><td class="mono">24</td><td>로스쿨 밖 과목·독립연구 제외</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel-b navrow" style="border-top:1px solid var(--line)">
+      <span class="muted small">선택한 내용은 이 브라우저에만 저장됩니다.</span>
+      <button class="btn primary" type="button" data-go="2">다음 · 가을학기 이수 과목 체크</button>
+    </div>
+  </section>
+
+  <!-- STEP 2 & 3 share the work layout -->
+  <section id="step2" hidden>
+    <div class="work">
+      <div class="card">
+        <div class="cat-h">
+          <h2>가을학기(Fall 2026) 개설 과목</h2>
+          <p class="muted small">실제로 들은 과목을 체크하세요. 요건 계산에만 쓰이며, 같은 과목의 다른 분반은 하나만 고를 수 있습니다.</p>
+          <input class="search" id="qF" type="search" placeholder="과목명·번호·교수 검색" autocomplete="off">
+          <div class="chips" id="chipsF" role="group" aria-label="분류 필터"></div>
+        </div>
+        <div class="catalog" id="catF"></div>
+      </div>
+      <div class="gridcol">
+        <div class="card">
+          <div class="cat-h">
+            <h2>가을학기 시간표</h2>
+            <div class="legend" id="legendF"></div>
+          </div>
+          <div class="scroll-x"><div class="tt" id="ttF"></div></div>
+          <div class="sub" id="unschF"></div>
+        </div>
+        <div class="navrow">
+          <button class="btn" type="button" data-go="1">이전 · 트랙 설정</button>
+          <button class="btn primary" type="button" data-go="3">다음 · 봄학기 시간표 짜기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="step3" hidden>
+    <div class="s3top">
+      <div class="card springsum" id="springSum"></div>
+      <details class="card groupinfo" id="groupInfo">
+        <summary><span class="gi-t">트랙 그룹 과목 안내</span><span class="gi-s" id="giSub">그룹 A · 그룹 B 과목이 무엇인지 펼쳐서 확인하세요</span><span class="gi-arrow" aria-hidden="true">▾</span></summary>
+        <div class="gi-body" id="giBody"></div>
+      </details>
+    </div>
+    <div class="work">
+      <div class="card">
+        <div class="cat-h">
+          <h2>봄학기(Spring 2027) 개설 과목</h2>
+          <input class="search" id="qS" type="search" placeholder="과목명·번호·교수 검색 (예: privacy, 302, Netanel)" autocomplete="off">
+          <div class="chips" id="chipsS" role="group" aria-label="분류 필터"></div>
+          <label class="toggle"><input type="checkbox" id="hideClash"> 지금 시간표와 겹치는 과목 숨기기</label>
+        </div>
+        <div class="catalog" id="catS"></div>
+      </div>
+      <div class="gridcol">
+        <div class="card">
+          <div class="cat-h">
+            <h2>봄학기 시간표 <span class="muted" style="font-weight:400;font-size:13px">· 1/15 개강 · 4/26 종강</span></h2>
+            <div class="legend" id="legendS"></div>
+            <div class="alerts" id="alerts"></div>
+          </div>
+          <div class="scroll-x"><div class="tt" id="ttS"></div></div>
+          <div class="sub" id="jterm"></div>
+          <div class="sub" id="unschS"></div>
+        </div>
+        <div class="card">
+          <div class="cat-h"><h2>기말시험 일정</h2><p class="muted small">기말 기간 4/30–5/13. 같은 날이거나 하루 간격인 시험은 주황색으로 표시됩니다.</p></div>
+          <div class="panel-b" style="padding-top:6px"><ul class="exams" id="exams"></ul></div>
+        </div>
+        <div class="navrow">
+          <button class="btn" type="button" data-go="2">이전 · 가을학기 이수 과목</button>
+          <button class="btn" type="button" id="clearS">봄학기 선택 모두 지우기</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="mbar" id="mbar" aria-label="빠른 이동">
+    <span class="mu" id="mbarU">봄 <b>0</b>학점</span>
+    <span class="row"><button class="btn" type="button" id="toCat">과목 목록</button><button class="btn primary" type="button" id="toGrid">시간표 보기</button></span>
+  </div>
+  <footer>시간표는 2026–27 Schedule of Classes 기준입니다. 수강신청 전 MyUCLA와 학교 공지를 다시 확인하세요.</footer>
+</div>
+
+<script>
+const DATA = {"fall":[{"k":"F201-1","no":"201","sec":"1","t":"Constitutional Law II","ko":"헌법 II","u":4.0,"ur":"4","cap":77,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"12/15","p":"Cohen, Dale","c":"ADV","f":[],"n":"Prerequisite: Law 148, Constitutional Law I."},{"k":"F202-1","no":"202","sec":"1","t":"Criminal Procedure: Investigations","ko":"형사소송법: 수사","u":4.0,"ur":"4","cap":75,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"12/15","p":"Colgan, Beth","c":"ADV","f":["jd"],"n":""},{"k":"F202-2","no":"202","sec":"2","t":"Criminal Procedure: Investigations","ko":"형사소송법: 수사","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"12/9","p":"Langer, Máximo","c":"ADV","f":["jd"],"n":""},{"k":"F205-1","no":"205","sec":"1","t":"Wills and Trusts","ko":"유언·신탁법","u":4.0,"ur":"4","cap":80,"g":"LG","m":[["MTR","10:35 AM","11:50 AM"]],"ex":"12/4","p":"Goodman, Patrick","c":"ADV","f":["jd"],"n":"Electronics-free classroom - no laptops, etc. See course description and syllabus for more information and CAE exceptions."},{"k":"F207-1","no":"207","sec":"1","t":"Community Property","ko":"부부공동재산법","u":3.0,"ur":"3","cap":85,"g":"LG","m":[["M","5:30 PM","8:30 PM"]],"ex":"12/17","p":"Slevin, Hillary","c":"ADV","f":["jd"],"n":""},{"k":"F211-1","no":"211","sec":"1","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MTR","9:10 AM","10:25 AM"]],"ex":"12/16","p":"Eagly, Ingrid","c":"ADV","f":["jd"],"n":""},{"k":"F211-2","no":"211","sec":"2","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":110,"g":"LG","m":[["MTR","3:20 PM","4:35 PM"]],"ex":"12/8","p":"Wonsowicz, Pavel","c":"ADV","f":["jd"],"n":""},{"k":"F211-3","no":"211","sec":"3","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"12/8","p":"Heilman, John","c":"ADV","f":["jd"],"n":""},{"k":"F212-1","no":"212","sec":"1","t":"Federal Courts","ko":"연방법원론","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MWF","8:35 AM","9:50 AM"]],"ex":"12/7","p":"Marcus, David","c":"ADV","f":[],"n":"Prerequisite: Law 145, Civil Procedure. Pre/corequisite: Law 148, Constitutional Law."},{"k":"F213-1","no":"213","sec":"1","t":"Sports as Legal Systems","ko":"스포츠와 법체계 비교","u":3.0,"ur":"3","cap":25,"g":"LG","m":[["W","1:45 PM","4:45 PM"]],"ex":"12/11","p":"Greenberg, Mark","c":"ADV","f":[],"n":""},{"k":"F217-1","no":"217","sec":"1","t":"Introduction to Legal Philosophy","ko":"법철학 입문","u":3.0,"ur":"3","cap":18,"g":"LG","m":[["W","5:30 PM","8:30 PM"]],"ex":"12/10","p":"Churba, Tomás","c":"ADV","f":[],"n":""},{"k":"F220-1","no":"220","sec":"1","t":"Introduction to Federal Income Taxation","ko":"연방소득세법 입문","u":4.0,"ur":"4","cap":58,"g":"LG","m":[["MWF","1:45 PM","3:00 PM"]],"ex":"12/18","p":"Bank, Steven","c":"ADV","f":[],"n":""},{"k":"F222-1","no":"222","sec":"1","t":"Estate and Gift Taxation","ko":"상속·증여세법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","5:30 PM","8:30 PM"]],"ex":"12/10","p":"Bawden, Elizabeth","c":"ADV","f":[],"n":""},{"k":"F230-1","no":"230","sec":"1","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":110,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Bainbridge, Stephen","c":"ADV","f":["jd"],"n":""},{"k":"F230-2","no":"230","sec":"2","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":59,"g":"LG","m":[["TR","8:25 AM","10:25 AM"]],"ex":"12/16","p":"Restrepo, Fernán","c":"ADV","f":["jd"],"n":""},{"k":"F234-1","no":"234","sec":"1","t":"Accounting and Financial Analysis for Lawyers","ko":"법률가를 위한 회계·재무분석","u":3.0,"ur":"3","cap":85,"g":"LG","m":[["TR","8:25 AM","10:25 AM"]],"ex":"Other","p":"Power, John","c":"ADV","f":[],"n":"Course meets 8/25/26 - 10/29/26. Review Session: 10/29/26. Final Exam: In-Class Final Exam on 10/30/26. Course may not be appropriate for students with a background in accounting, but students are free to self-assess. Students who wish to waive out based on th"},{"k":"F236-1","no":"236","sec":"1","t":"Securities Regulation","ko":"증권규제법","u":3.0,"ur":"3","cap":120,"g":"LG","m":[["TR","11:00 AM","12:25 PM"]],"ex":"12/15","p":"Park, James","c":"ADV","f":[],"n":"Prerequisite: Law 230, Business Associations."},{"k":"F240-1","no":"240","sec":"1","t":"Antitrust Law I","ko":"독점규제법 I","u":3.0,"ur":"3","cap":75,"g":"LG","m":[["R","5:30 PM","8:30 PM"]],"ex":"12/14","p":"Dixton, Jennifer","c":"ADV","f":[],"n":""},{"k":"F250-1","no":"250","sec":"1","t":"Secured Transactions","ko":"담보거래법","u":3.0,"ur":"3","cap":58,"g":"LG","m":[["WF","10:35 AM","12:00 PM"]],"ex":"12/4","p":"Amini, Ava","c":"ADV","f":[],"n":""},{"k":"F261-1","no":"261","sec":"1","t":"Employment Law","ko":"고용법","u":2.0,"ur":"2","cap":58,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Abele, George","c":"ADV","f":[],"n":""},{"k":"F263-1","no":"263","sec":"1","t":"Employment Discrimination Law","ko":"고용차별법","u":4.0,"ur":"4","cap":40,"g":"LG","m":[["MWR","10:35 AM","12:00 PM"]],"ex":"12/4","p":"Fishkin, Joseph","c":"ADV","f":[],"n":""},{"k":"F266-1","no":"266","sec":"1","t":"Critical Race Theory","ko":"비판적 인종이론","u":4.0,"ur":"4","cap":41,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"12/4","p":"Gamal, Fanna","c":"ADV","f":[],"n":"Prerequisite: Law 148, Constitutional Law I or Law 113, Public Law, or corequisite: Law 475, US Con Law - LLM. Priority given to students enrolled in the Critical Race Studies specialization program."},{"k":"F267-1","no":"267","sec":"1","t":"Federal Indian Law","ko":"연방 원주민법","u":3.0,"ur":"3","cap":30,"g":"LG","m":[["TR","11:00 AM","12:40 PM"]],"ex":"12/15","p":"Riley, Angela","c":"ADV","f":[],"n":"Course meets 09/15/26 - 11/25/26."},{"k":"F273-1","no":"273","sec":"1","t":"International Human Rights Law","ko":"국제인권법","u":4.0,"ur":"4","cap":40,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Spain Bradley, Anna","c":"ADV","f":[],"n":"Early drop deadline: 8/28/26 at 5:00 p.m."},{"k":"F278-1","no":"278","sec":"1","t":"Comparative Law","ko":"비교법","u":3.0,"ur":"3","cap":40,"g":"LG","m":[["WF","10:35 AM","12:00 PM"]],"ex":"12/4","p":"Gardbaum, Stephen","c":"ADV","f":[],"n":""},{"k":"F290-1","no":"290","sec":"1","t":"Environmental Law and Policy","ko":"환경법과 정책","u":3.0,"ur":"3","cap":58,"g":"LG","m":[["TR","11:00 AM","12:25 PM"]],"ex":"12/15","p":"Camacho, Alejandro","c":"ADV","f":[],"n":""},{"k":"F295-1","no":"295","sec":"1","t":"Criminal Procedure: Adjudication","ko":"형사소송법: 재판","u":4.0,"ur":"4","cap":75,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"12/8","p":"Colgan, Beth","c":"ADV","f":["jd"],"n":""},{"k":"F301-1","no":"301","sec":"1","t":"Art and Cultural Property Law","ko":"예술·문화재법","u":3.0,"ur":"3","cap":38,"g":"LG","m":[["TR","1:10 PM","2:50 PM"]],"ex":"12/9","p":"Riley, Angela","c":"ADV","f":[],"n":"Course meets 09/15/26 - 11/25/26."},{"k":"F302-1","no":"302","sec":"1","t":"Copyright Law","ko":"저작권법","u":4.0,"ur":"4","cap":90,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"12/15","p":"Lichtman, Douglas","c":"ADV","f":[],"n":""},{"k":"F305-1","no":"305","sec":"1","t":"Entertainment Law","ko":"엔터테인먼트법","u":3.0,"ur":"3","cap":86,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"12/4","p":"Tang, Xiyin","c":"ADV","f":[],"n":""},{"k":"F306-1","no":"306","sec":"1","t":"Patent Law","ko":"특허법","u":4.0,"ur":"4","cap":58,"g":"LG","m":[["TR","8:25 AM","10:25 AM"]],"ex":"12/16","p":"Pedraza-Fariña, Laura","c":"ADV","f":[],"n":""},{"k":"F307-1","no":"307","sec":"1","t":"Intellectual Property Law","ko":"지식재산권법 개관","u":4.0,"ur":"4","cap":105,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"12/9","p":"Lichtman, Douglas","c":"ADV","f":["consent"],"n":"Instructor consent required for students who have previously taken or are concurrently taking Law 302, Copyright Law OR Law 306, Patent Law."},{"k":"F309-1","no":"309","sec":"1","t":"Criminal Law","ko":"형법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MWF","10:35 AM","11:50 AM"]],"ex":"12/4","p":"An, Yutian","c":"ADV","f":["jd"],"n":""},{"k":"F311-1","no":"311","sec":"1","t":"Property","ko":"물권법","u":4.0,"ur":"4","cap":95,"g":"LG","m":[["MTR","1:45 PM","3:00 PM"]],"ex":"12/18","p":"Banner, Stuart","c":"ADV","f":["jd"],"n":""},{"k":"F312-1","no":"312","sec":"1","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":3.0,"ur":"3","cap":95,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"12/18","p":"Cummings, Scott","c":"ADV","f":["jd"],"n":""},{"k":"F312-2","no":"312","sec":"2","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":3.0,"ur":"3","cap":90,"g":"LG","m":[["M","5:30 PM","8:30 PM"]],"ex":"12/17","p":"Winkler, Adam","c":"ADV","f":["jd"],"n":""},{"k":"F316-1","no":"316","sec":"1","t":"Disability Law","ko":"장애인법","u":2.0,"ur":"2","cap":42,"g":"LG","m":[["T","8:50 AM","10:50 AM"]],"ex":"12/16","p":"Waterstone, Michael","c":"ADV","f":[],"n":""},{"k":"F317-1","no":"317","sec":"1","t":"Family Law","ko":"가족법","u":4.0,"ur":"4","cap":40,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"12/15","p":"Sidwell, Anne","c":"ADV","f":["jd"],"n":""},{"k":"F331-1","no":"331","sec":"1","t":"Immigration Law","ko":"이민법","u":4.0,"ur":"4","cap":75,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Motomura, Hiroshi","c":"ADV","f":[],"n":""},{"k":"F350-1","no":"350","sec":"1","t":"Energy Law and Regulation","ko":"에너지법과 규제","u":3.0,"ur":"3","cap":40,"g":"LG","m":[["TR","3:55 PM","5:20 PM"]],"ex":"12/8","p":"Boyd, William","c":"ADV","f":[],"n":""},{"k":"F357-1","no":"357","sec":"1","t":"Entertainment Guilds","ko":"엔터테인먼트 길드(노조)","u":2.0,"ur":"2","cap":35,"g":"LG","m":[["M","8:25 AM","10:25 AM"]],"ex":"12/16","p":"Wetanson, Russell","c":"ADV","f":[],"n":""},{"k":"F364-1","no":"364","sec":"1","t":"Motion Picture Distribution","ko":"영화 배급","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["T","5:30 PM","8:30 PM"]],"ex":"12/14","p":"Ziffren, Kenneth","c":"ADV","f":["app"],"n":"Application required to enroll and can be found at Application deadline noon on 7/16/26."},{"k":"F380-1","no":"380","sec":"1","t":"State and Local Taxation","ko":"주·지방세법","u":3.0,"ur":"3","cap":40,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"12/18","p":"Stark, Kirk","c":"ADV","f":[],"n":""},{"k":"F389-1","no":"389","sec":"1","t":"Prison Law and Policy","ko":"교정법과 정책","u":4.0,"ur":"4","cap":36,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Dolovich, Sharon","c":"ADV","f":[],"n":"Pre/corequisites: Law 148, Constitutional Law I AND Law 309, Criminal Law."},{"k":"F397-1","no":"397","sec":"1","t":"Advanced Legal Research","ko":"고급 법률 리서치","u":1.0,"ur":"1","cap":55,"g":"PU","m":[["R","1:10 PM","3:10 PM"]],"ex":"Other","p":"Edwards / Green / Raphael","c":"ADV","f":[],"n":"Prerequisite: Law 108A/B, Legal Research and Writing. Students cannot be concurrently enrolled in Law 108 A/B. Course meets: 8/27/26 to 10/8/26."},{"k":"F405-1","no":"405","sec":"1","t":"Preventive Detention","ko":"예방구금","u":4.0,"ur":"4","cap":18,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Arulanantham, Ahilan","c":"ADV","f":[],"n":"No laptops or other electronic devices permitted in the classroom. See course description for more information and CAE exceptions."},{"k":"F422-1","no":"422","sec":"1","t":"Silicon Valley Law","ko":"실리콘밸리 법","u":1.0,"ur":"1","cap":42,"g":"PU","m":[["F","9:00 AM","12:00 PM"]],"ex":"Other","p":"Green, Joshua","c":"ADV","f":[],"n":"Course meets on four successive Fridays from 10/23/26 to 11/13/26. Pre/co requisite: Law 230, Business Associations OR Law 115, Business Law for Non-Lawyers. Early drop deadline: 10/23/26 at 12:00 noon."},{"k":"F433-1","no":"433","sec":"1","t":"Taxation of the Entertainment Industry","ko":"엔터 산업 조세","u":2.0,"ur":"2","cap":40,"g":"LG","m":[["F","1:45 PM","3:45 PM"]],"ex":"12/7","p":"Nix, Shane","c":"ADV","f":[],"n":""},{"k":"F434-1","no":"434","sec":"1","t":"Business Skills for Lawyers","ko":"법률가 비즈니스 스킬","u":2.0,"ur":"2","cap":85,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"12/8","p":"Habibi, Paul","c":"ADV","f":[],"n":""},{"k":"F462-1","no":"462","sec":"1","t":"The Law of Peace","ko":"평화의 법","u":3.0,"ur":"3","cap":15,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"Other","p":"Spain Bradley, Anna","c":"ADV","f":[],"n":"Early drop deadline: 8/28/2026 at 5:00 p.m."},{"k":"F482-1","no":"482","sec":"1","t":"Representing Talent in the Entertainment Industry","ko":"엔터 업계 탤런트 대리","u":2.0,"ur":"2","cap":65,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"12/10","p":"Johnson / Wagner","c":"ADV","f":[],"n":"Prerequisite: Law 100, Contracts OR Law 112, Private Law."},{"k":"F495-1","no":"495","sec":"1","t":"Artificial Intelligence Law","ko":"인공지능법","u":3.0,"ur":"3","cap":90,"g":"LG","m":[["TR","3:20 PM","4:45 PM"]],"ex":"12/8","p":"Selbst, Andrew","c":"ADV","f":[],"n":""},{"k":"F502-1","no":"502","sec":"1","t":"Seminar: Borders, Punishment and Control","ko":"세미나: 국경·형벌·통제","u":3.0,"ur":"3","cap":14,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Eagly, Ingrid","c":"SEM","f":[],"n":""},{"k":"F505A-1","no":"505A","sec":"1","t":"Seminar: Major Problems in Environment and Sustainability (Fall)","ko":"세미나: 환경·지속가능성 (가을)","u":2.0,"ur":"2(4)","cap":11,"g":"LG","m":[["W","4:00 PM","7:00 PM"]],"ex":"Other","p":"Boyd, William","c":"SEM","f":[],"n":"Course meets: 9/23/26 to 11/25/26. This is a year-long course."},{"k":"F509-1","no":"509","sec":"1","t":"Seminar: Rights, Secrecy & Public Interest Litigation","ko":"세미나: 9·11 이후 공익소송","u":3.0,"ur":"3","cap":18,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Kaufman, Brett","c":"SEM","f":[],"n":""},{"k":"F524-1","no":"524","sec":"1","t":"Seminar: Legal Philosophy","ko":"세미나: 법철학","u":3.0,"ur":"3","cap":14,"g":"LG","m":[["M","2:00 PM","5:00 PM"]],"ex":"Other","p":"DODD 300C Ronquist, Filippa","c":"SEM","f":[],"n":"Course meets 9/28/26 to 11/23/26 in Dodd 300C."},{"k":"F526-1","no":"526","sec":"1","t":"Seminar: Housing Segregation","ko":"세미나: 주거 분리","u":3.0,"ur":"3","cap":14,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Sander, Richard","c":"SEM","f":[],"n":""},{"k":"F535-1","no":"535","sec":"1","t":"Seminar: Public Interest Lawyering","ko":"세미나: 공익 변호","u":3.0,"ur":"3","cap":18,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Narro, Victor","c":"SEM","f":[],"n":""},{"k":"F567-1","no":"567","sec":"1","t":"Seminar: Direct Democracy","ko":"세미나: 직접민주주의","u":3.0,"ur":"3","cap":17,"g":"LG","m":[["M","3:20 PM","5:20 PM"]],"ex":"Other","p":"Fishkin, Joseph","c":"SEM","f":[],"n":""},{"k":"F572A-1","no":"572A","sec":"1","t":"Skills Writing Advisor (Fall)","ko":"작문 어드바이저 (가을)","u":2.0,"ur":"2(3)","cap":56,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Baril, Jessica","c":"SEM","f":[],"n":"Course restricted to students who are Writing Skills Advisors. Records Office will process enrollment for this course along with Law 346, the companion course associated with this program. Early drop deadline: 8/11/26 at 5 p.m."},{"k":"F586-1","no":"586","sec":"1","t":"Seminar: International Food Law and Governance","ko":"세미나: 국제 식품법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Roberts, Michael","c":"SEM","f":[],"n":""},{"k":"F591-1","no":"591","sec":"1","t":"Seminar: Climate Change Law and Policy","ko":"세미나: 기후변화법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Horowitz, Cara","c":"SEM","f":[],"n":""},{"k":"F611-1","no":"611","sec":"1","t":"Seminar: Environmental Law Colloquium","ko":"세미나: 환경법 콜로키움","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["TR","1:10 PM","2:35 PM"]],"ex":"Other","p":"Camacho, Alejandro","c":"SEM","f":[],"n":""},{"k":"F618-1","no":"618","sec":"1","t":"Seminar: Professional Identity & the Law","ko":"세미나: 법조인 정체성","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Suttonwills / Williams","c":"SEM","f":[],"n":""},{"k":"F627-1","no":"627","sec":"1","t":"Seminar: Public Health and Ethics","ko":"세미나: 공중보건과 윤리","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Wiley, Lindsay","c":"SEM","f":[],"n":""},{"k":"F635-1","no":"635","sec":"1","t":"Seminar: Topics in Animal Law","ko":"세미나: 동물법","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Bryant, Taimie","c":"SEM","f":[],"n":""},{"k":"F640-1","no":"640","sec":"1","t":"Seminar: Higher Education Law and Policy","ko":"세미나: 고등교육법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["R","1:10 PM","3:10 PM"]],"ex":"Other","p":"Falsafi, Shiva","c":"SEM","f":[],"n":"Prerequisite: Law 148, Constitutional Law I."},{"k":"F645-1","no":"645","sec":"1","t":"Seminar: Race Conscious Remedies","ko":"세미나: 인종 고려 구제","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Harris, Cheryl","c":"SEM","f":[],"n":"Prerequisite: Law 148, Constitutional Law I."},{"k":"F648-1","no":"648","sec":"1","t":"Seminar: Business Law Workshop","ko":"세미나: 기업법 워크숍","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["TR","10:35 AM","12:00 PM"]],"ex":"Other","p":"Verstein, Andrew","c":"SEM","f":[],"n":"Pre or corequisite: Law 230, Business Associations."},{"k":"F649-1","no":"649","sec":"1","t":"Seminar: Jewish Law and Ethics","ko":"세미나: 유대법과 윤리","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Zasloff, Jonathan","c":"SEM","f":[],"n":"1/4"},{"k":"F652-1","no":"652","sec":"1","t":"Seminar: PR Issues in Business Transactions","ko":"세미나: 기업거래의 직업윤리","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Bussel, Daniel","c":"SEM","f":[],"n":""},{"k":"F658-1","no":"658","sec":"1","t":"Seminar: Human Rights and War Crimes Digital Investigations","ko":"세미나: 인권·전쟁범죄 디지털 수사","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["T","1:10 PM","3:10 PM"]],"ex":"Other","p":"Peake, Jessica","c":"SEM","f":[],"n":""},{"k":"F671-1","no":"671","sec":"1","t":"Seminar: Comparative Education Law","ko":"세미나: 비교 교육법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","10:00 AM","12:00 PM"]],"ex":"Other","p":"Falsafi, Shiva","c":"SEM","f":[],"n":""},{"k":"F675-1","no":"675","sec":"1","t":"Seminar: LGBTQ Law and Policy","ko":"세미나: LGBTQ 법","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Nguyen, Giam","c":"SEM","f":[],"n":""},{"k":"F693-1","no":"693","sec":"1","t":"Seminar: Food, Beverage & Consumer Products Litigation","ko":"세미나: 식품·소비재 소송","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Biderman / Wetherell","c":"SEM","f":[],"n":""},{"k":"F561A-1","no":"561A","sec":"1","t":"Perspectives: Law In Film","ko":"독서 세미나: Law In Film","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Arnold, Alexander","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. Course meets: 8/31, 9/21, 10/5, 10/19, and 11/2 from 5:30 -8:30PM in room 2326 (Faculty Library)."},{"k":"F561A-2","no":"561A","sec":"2","t":"Perspectives: Human Law Ai World","ko":"독서 세미나: Human Law Ai World","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Gamal, Fanna","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. Course meets: 9/25, 10/30, 11/20, 3/12, and 4/23 at 12:00PM on UCLA campus except 10/30 meeting (4:30PM at Jackson Market, Culver City). Third year JD students given priority enrollment during"},{"k":"F561A-4","no":"561A","sec":"4","t":"Perspectives: Graphic Novels","ko":"독서 세미나: Graphic Novels","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Lichtman, Douglas","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. Course meets: 9/20, 10/25, 1/24, 2/21, and 3/14 from 6:00 to 8:30PM."},{"k":"F561A-5","no":"561A","sec":"5","t":"Perspectives: Art Is A Drug","ko":"독서 세미나: Art Is A Drug","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Riley, Angela","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. Course meets: 9/1, 10/20, 11/3, AND 1/19 OR 1/26, AND 2/16 OR 3/2 at 7:00 p.m. (Hold 1/26 and 3/2 as possible meeting dates; there will only be 5 meeting dates.) Early drop deadline: 8/17/26 a"},{"k":"F561A-6","no":"561A","sec":"6","t":"Perspectives: Law And Theater","ko":"독서 세미나: Law And Theater","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Verstein, Andrew","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. Course meets: five Sundays at instructor's home from 12:00- 2:30 PM, plus up to five additional times at theaters to see plays: 9/23, 4:00 p.m; 9/26, 12:00 p.m.; 11/12, 7:30 p.m.; 11/15, 12:00"},{"k":"F561A-7","no":"561A","sec":"7","t":"Perspectives: Great Frauds","ko":"독서 세미나: Great Frauds","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Zolt, Eric","c":"PER","f":[],"n":"Third year JD students given priority enrollment during first pass. All course meetings will take place during the Spring 2027 semester. Students will be enrolled in Law 561A for 0.5 unit, but no class meetings will take place until Spring 2027."},{"k":"F700-1","no":"700","sec":"1","t":"Clinical: Pretrial Civil Litigation","ko":"클리닉: 민사 소송 실무","u":4.0,"ur":"4","cap":18,"g":"PU","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Light, Jason","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F701-1","no":"701","sec":"1","t":"Clinical: Prisoners' Rights","ko":"클리닉: 수용자 인권","u":6.0,"ur":"6","cap":12,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Littman / Montes /","c":"CLIN","f":["exp"],"n":"Schmutzer-Oblegorski Students are not permitted to drop this clinic at any time after enrolling, absent instructor permission to be granted only in extraordinary circumstances."},{"k":"F702-1","no":"702","sec":"1","t":"Clinical: Depositions and Discovery","ko":"클리닉: 증언녹취·증거개시","u":4.0,"ur":"4","cap":18,"g":"PU","m":[["TR","3:20 PM","5:20 PM"]],"ex":"Other","p":"Light, Jason","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F705-1","no":"705","sec":"1","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","1:45 PM","2:40 PM"],["R","12:00 PM","3:00 PM"]],"ex":"Other","p":"Bernstein / Anderson","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"F705-2","no":"705","sec":"2","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","1:45 PM","2:40 PM"],["R","5:30 PM","8:30 PM"]],"ex":"Other","p":"Kamalpour / Bernstein","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 211, Evidence"},{"k":"F705-3","no":"705","sec":"3","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","1:45 PM","2:40 PM"],["T","6:00 PM","9:00 PM"]],"ex":"Other","p":"Bernstein / Love","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"F705-4","no":"705","sec":"4","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","1:45 PM","2:40 PM"],["W","1:00 PM","4:00 PM"]],"ex":"Other","p":"Bernstein / Koury","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"F705-5","no":"705","sec":"5","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","1:45 PM","2:40 PM"],["T","9:00 AM","12:00 PM"]],"ex":"Other","p":"Bernstein, Justin","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"F707-1","no":"707","sec":"1","t":"Clinical: Mediation","ko":"클리닉: 조정","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Wetzstein, Sarah","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F707-2","no":"707","sec":"2","t":"Clinical: Mediation","ko":"클리닉: 조정","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"Other","p":"Wetzstein, Sarah","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F722-1","no":"722","sec":"1","t":"Clinical: Mediation Clinic","ko":"클리닉: 조정 실무","u":4.0,"ur":"4","cap":4,"g":"LG","m":[["M","10:00 AM","12:00 PM"]],"ex":"Other","p":"Lanning, Deirdre","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/21/26 at 5 p.m. Prerequisite: Law 707, Mediation."},{"k":"F732-1","no":"732","sec":"1","t":"Clinical: Land Development Simulation","ko":"클리닉: 토지개발 시뮬레이션","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["F","9:00 AM","12:00 PM"]],"ex":"Other","p":"Pilchen, Lloyd","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F733-1","no":"733","sec":"1","t":"Clinical: Pretrial Criminal Litigation","ko":"클리닉: 형사 소송 실무","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Cotton, Gerloni","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Prerequisite: Law 309, Criminal Law. Corequisite: Law 211, Evidence."},{"k":"F734-1","no":"734","sec":"1","t":"Clinical: Housing Justice","ko":"클리닉: 주거 정의","u":6.0,"ur":"6","cap":10,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Nickell, Matt","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/21/26 at 5 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"F738-1","no":"738","sec":"1","t":"Clinical: California Environmental Legislation","ko":"클리닉: 캘리포니아 환경입법","u":6.0,"ur":"6","cap":9,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Stein / van Emmerick","c":"CLIN","f":["exp"],"n":"Students are not permitted to drop this clinic at any time after enrolling, absent instructor permission."},{"k":"F760A-1","no":"760A","sec":"1","t":"Clinical: Patent (Fall)","ko":"클리닉: 특허 (가을)","u":3.0,"ur":"3(6)","cap":8,"g":"LG","m":[["R","5:30 PM","7:30 PM"]],"ex":"Other","p":"Chong, Eugene","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: (1) Law 306, Patent Law OR Law 307, Intellectual Property; AND (2) Law 312, Professional Responsibility."},{"k":"F763-1","no":"763","sec":"1","t":"Clinical: Contract Drafting","ko":"클리닉: 계약서 작성","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"Other","p":"Karlsson, Sarah","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Students may not enroll and earn credit for both Law 751 and 763."},{"k":"F764-1","no":"764","sec":"1","t":"Transactional Law Meet","ko":"거래법 경연","u":1.0,"ur":"1","cap":42,"g":"PU","m":[["M","10:00 AM","12:00 PM"]],"ex":"Other","p":"Karlsson, Sarah","c":"CLIN","f":["exp"],"n":"Early drop deadline: 9/18/26 at 5 p.m. Course meets: TBD Transactional Law Competition on either 10/30 or 11/6 from 12:30 to 5:00 p.m."},{"k":"F769-1","no":"769","sec":"1","t":"Clinical: Documentary Film","ko":"클리닉: 다큐멘터리 영화","u":4.0,"ur":"4","cap":15,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Cohen / Sundra","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F788-1","no":"788","sec":"1","t":"Advanced Trial Preparation","ko":"고급 공판 준비","u":3.0,"ur":"3","cap":14,"g":"LG","m":[["T","3:20 PM","6:20 PM"]],"ex":"Other","p":"Bernstein, Justin","c":"CLIN","f":["exp","consent"],"n":"Instructor consent required. Enrollment processed by the Records Office. Prerequisites: Law 211, Evidence, AND Law 705, Trial Advocacy. Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F792-1","no":"792","sec":"1","t":"Clinical: Immigrant Family Legal","ko":"클리닉: 이민 가족","u":6.0,"ur":"6","cap":10,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Rabin, Nina","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/1/26 at 5 p.m."},{"k":"F794-1","no":"794","sec":"1","t":"Clinical: Human Rights Litigation","ko":"클리닉: 인권 소송","u":5.0,"ur":"5","cap":8,"g":"LG","m":[["TR","11:00 AM","12:30 PM"]],"ex":"Other","p":"Sweetser, Catherine","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Pre or corequisite: Law 270, Public International Law OR Law 273, International Human Rights Law."},{"k":"F797-1","no":"797","sec":"1","t":"Appellate Advocacy: Intro to Moot Court","ko":"항소 변론 입문","u":1.0,"ur":"1","cap":16,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Gomez, Michael","c":"CLIN","f":["exp"],"n":"Early drop deadline: 8/28/26 at 5 p.m. Prerequisite: Law 108A/B, Legal Research and Writing and participation in the Skye Donald 1L Moot Court Competition."},{"k":"F802-1","no":"802","sec":"1","t":"Entrepreneurship Practicum","ko":"스타트업 프랙티컴","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["M","8:25 AM","10:25 AM"]],"ex":"Other","p":"Dorff / Mayberry / Van","c":"CLIN","f":["exp"],"n":"Ligten This course has two parts, for a total of 4 units: the seminar (802) for 2 units and the field placement (810) for 2 units. Prerequisite: Law 230, Business Associations."},{"k":"F805-1","no":"805","sec":"1","t":"Externship Seminar: Criminal","ko":"익스턴십 세미나: 형사","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["R","5:30 PM","7:30 PM"]],"ex":"Other","p":"Nam, Julius","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: 9/3, 9/24, 10/8, 10/15, 10/29, 11/5 and 11/1 2."},{"k":"F806-1","no":"806","sec":"1","t":"Externship Seminar: Judicial","ko":"익스턴십 세미나: 법원","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["W","6:00 PM","8:00 PM"]],"ex":"Other","p":"Hanasono, Mark","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: 9/2, 9/16, 9/30, 10/14, 10/21, 10/28 and 11/18."},{"k":"F807-1","no":"807","sec":"1","t":"Externship Seminar: Public Interest","ko":"익스턴십 세미나: 공익","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Koenig, Stuart","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F808-1","no":"808","sec":"1","t":"Externship Seminar: Government/Civil","ko":"익스턴십 세미나: 정부·민사","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["W","6:00 PM","8:00 PM"]],"ex":"Other","p":"Toma, James","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Pre or corequisite: Enrollment in part-time externship in civil/government setting ."},{"k":"F809-1","no":"809","sec":"1","t":"Externship Seminar: Entertainment/Corporate","ko":"익스턴십 세미나: 엔터·기업","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Lee, Vivian","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: 8/31, 9/14, 9/28, 10/19, 10/26, 11/9, and 11/23/2026."},{"k":"F810-1","no":"810","sec":"1","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":17,"g":"PU","m":[],"ex":"Other","p":"Casey, Timothy","c":"CLIN","f":["rec_office"],"n":"Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 817."},{"k":"F810-2","no":"810","sec":"2","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":10,"g":"PU","m":[],"ex":"Other","p":"Dorff / Mayberry / Van","c":"CLIN","f":["rec_office"],"n":"Ligten Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 802."},{"k":"F810-3","no":"810","sec":"3","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":20,"g":"PU","m":[],"ex":"Other","p":"Dunn, Chad","c":"CLIN","f":["rec_office"],"n":"Enrollment in this course will be processed by the Records Office. This is the companion field placement for Law 832."},{"k":"F814-1","no":"814","sec":"1","t":"Externship Seminar: Federal Public Defender","ko":"익스턴십 세미나: 연방 국선","u":2.0,"ur":"2","cap":10,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Drozdowski / Shah","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F815-1","no":"815","sec":"1","t":"Lawyering in Practice","ko":"실무 속 변호","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Mora, Clara","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F817-1","no":"817","sec":"1","t":"Practicum: California Criminal Justice","ko":"프랙티컴: 캘리포니아 형사사법","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Casey, Timothy","c":"CLIN","f":["exp"],"n":"This course has two parts, for a total of 4 units: the seminar (817) for 2 units and the field placement (810) for 2 units. Early drop deadline: 8/21/26 at 5 p.m."},{"k":"F832-1","no":"832","sec":"1","t":"Practicum: Voting Rights","ko":"프랙티컴: 투표권","u":2.0,"ur":"2","cap":20,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Dunn / Morfin","c":"CLIN","f":["exp"],"n":"2/4 This course has two parts, for a total of 4 units: the seminar (832) for 2 units and the field placement (810) for 2 units. Early drop deadline: 8/28/26 at 5 p.m."},{"k":"F851A-1","no":"851A","sec":"1","t":"Agency Externship (Full-time)","ko":"기관 익스턴십 (풀타임)","u":11.0,"ur":"11","cap":10,"g":"PU","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F851B-1","no":"851B","sec":"1","t":"Agency Externship Seminar","ko":"기관 익스턴십 세미나","u":2.0,"ur":"2","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F852A-1","no":"852A","sec":"1","t":"Externship: UC in DC","ko":"워싱턴 DC 익스턴십","u":10.0,"ur":"10","cap":10,"g":"PU","m":[],"ex":"Other","p":"Lehtman, Nicole","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F852B-1","no":"852B","sec":"1","t":"Externship: UC in DC Seminar","ko":"워싱턴 DC 익스턴십 세미나","u":3.0,"ur":"3","cap":10,"g":"LG","m":[],"ex":"Other","p":"Lehtman, Nicole","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F870A-1","no":"870A","sec":"1","t":"UCLA in NYC","ko":"뉴욕 익스턴십","u":10.0,"ur":"10","cap":3,"g":"PU","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F870B-1","no":"870B","sec":"1","t":"UCLA in NYC Seminar","ko":"뉴욕 익스턴십 세미나","u":3.0,"ur":"3","cap":3,"g":"LG","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F871A-1","no":"871A","sec":"1","t":"Externship: UCLA Law in the Hague","ko":"헤이그 익스턴십","u":11.0,"ur":"11","cap":12,"g":"PU","m":[],"ex":"Other","p":"Sidwell / Mackintosh","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F871B-1","no":"871B","sec":"1","t":"Externship: UCLA Law in the Hague Seminar","ko":"헤이그 익스턴십 세미나","u":2.0,"ur":"2","cap":12,"g":"LG","m":[],"ex":"Other","p":"Sidwell / Mackintosh","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"F220-2","no":"220","sec":"2","t":"Introduction to Federal Income Taxation","ko":"연방소득세법 입문","u":2.0,"ur":"2","cap":110,"g":"LG","m":[["MWR","8:25 AM","10:25 AM"]],"ex":"12/16","p":"Oh, Jason","c":"LLM","f":["llm"],"n":"Meets 10/25/26 - 11/25/26."},{"k":"F230-3","no":"230","sec":"3","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":135,"g":"LG","m":[["MWR","8:25 AM","10:25 AM"]],"ex":"Other","p":"Kim, Sung Hui","c":"LLM","f":["llm"],"n":"Meets 8/24/26 - 10/22/26. Review Session: 10/22/26. Final Exam: In-class Final Exam, 10/30/26 (Time TBA). Early drop deadline: 8/28/26 at 5:00PM."},{"k":"F305-2","no":"305","sec":"2","t":"Entertainment Law","ko":"엔터테인먼트법","u":3.0,"ur":"3","cap":85,"g":"LG","m":[["T","5:30 PM","8:30 PM"]],"ex":"12/14","p":"Simon, Jake","c":"LLM","f":["llm"],"n":"Early Drop Deadline: 9/21/26 at 5:00 p.m."},{"k":"F312-3","no":"312","sec":"3","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":2.0,"ur":"2","cap":135,"g":"LG","m":[["T","8:50 AM","10:50 AM"]],"ex":"12/16","p":"Webster, Nicole","c":"LLM","f":["llm"],"n":""},{"k":"F403-1","no":"403","sec":"1","t":"Contracts for Foreign Lawyers","ko":"계약법 (외국 변호사용)","u":2.0,"ur":"2","cap":110,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"12/11","p":"Curtis, James","c":"LLM","f":["llm"],"n":""},{"k":"F406-1","no":"406","sec":"1","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["M","3:20 PM","5:20 PM"]],"ex":"Other","p":"Lew-Corbridge, Connie","c":"LLM","f":["llm"],"n":""},{"k":"F406-2","no":"406","sec":"2","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["R","1:10 PM","3:10 PM"]],"ex":"Other","p":"Lew-Corbridge, Connie","c":"LLM","f":["llm"],"n":""},{"k":"F406-3","no":"406","sec":"3","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Lew-Corbridge, Connie","c":"LLM","f":["llm"],"n":""},{"k":"F406-4","no":"406","sec":"4","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Patterson, Roza","c":"LLM","f":["llm"],"n":""},{"k":"F406-5","no":"406","sec":"5","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Jaffe, Michael","c":"LLM","f":["llm"],"n":""},{"k":"F406-6","no":"406","sec":"6","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Alkhawaja, Osama","c":"LLM","f":["llm"],"n":""},{"k":"F406-7","no":"406","sec":"7","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["T","6:00 PM","8:00 PM"]],"ex":"Other","p":"Megdal, Sarah","c":"LLM","f":["llm"],"n":""},{"k":"F406-8","no":"406","sec":"8","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":22,"g":"PU","m":[["M","3:20 PM","5:20 PM"]],"ex":"Other","p":"Merrill, Cynthia","c":"LLM","f":["llm"],"n":""},{"k":"F470-1","no":"470","sec":"1","t":"American Law in a Global Context","ko":"글로벌 맥락의 미국법 (LL.M. 오리엔테이션)","u":2.0,"ur":"2","cap":100,"g":"PU","m":[],"ex":"Other","p":"Merrill, Cynthia","c":"LLM","f":["llm"],"n":""},{"k":"F470-2","no":"470","sec":"2","t":"American Law in a Global Context","ko":"글로벌 맥락의 미국법 (LL.M. 오리엔테이션)","u":2.0,"ur":"2","cap":100,"g":"PU","m":[],"ex":"Other","p":"Webster, Nicole","c":"LLM","f":["llm"],"n":""},{"k":"F470-3","no":"470","sec":"3","t":"American Law in a Global Context","ko":"글로벌 맥락의 미국법 (LL.M. 오리엔테이션)","u":2.0,"ur":"2","cap":100,"g":"PU","m":[],"ex":"Other","p":"Reich, Peter","c":"LLM","f":["llm"],"n":""},{"k":"F475-1","no":"475","sec":"1","t":"U.S. Constitutional Law for Foreign Lawyers","ko":"미국 헌법 (외국 변호사용)","u":2.0,"ur":"2","cap":90,"g":"LG","m":[["T","1:10 PM","3:10 PM"]],"ex":"12/9","p":"Vandevelde, Kenneth","c":"LLM","f":["llm"],"n":""},{"k":"F476-1","no":"476","sec":"1","t":"Torts for Foreign Lawyers","ko":"불법행위법 (외국 변호사용)","u":2.0,"ur":"2","cap":36,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"12/8","p":"Merrill, Cynthia","c":"LLM","f":["llm"],"n":""},{"k":"F746-1","no":"746","sec":"1","t":"Clinical: Litigation and Fact Discovery","ko":"클리닉: 소송과 사실 조사 (LL.M.)","u":2.0,"ur":"2","cap":16,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Khan / Hwang","c":"LLM","f":["llm","llmexp"],"n":""},{"k":"F763-2","no":"763","sec":"2","t":"Clinical: Contract Drafting","ko":"클리닉: 계약서 작성","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Karlsson, Sarah","c":"LLM","f":["llm","llmexp"],"n":"Students may not enroll and earn credit for both Law 751 and 763. Early drop deadline: 8/28/26 at 5 p.m."}],"spring":[{"k":"S901-1","no":"901","sec":"1","t":"Space Law","ko":"우주법","u":1.0,"ur":"1","cap":24,"g":"LG","m":[["MTWR","1:30 PM","4:30 PM"]],"ex":"Other","p":"TBD, TBD","c":"J","f":[],"n":"Course meets 1/5/27, 1/6/27, 1/7/27, 1/11/27, 1/12/27, and 1/14/27 in ROOM 2483. Meeting times: 1/5/27 and 1/11/27 from 1:30-4:30 p.m. and 1/6/27, 1/7/27, 1/12/27, and 1/14/27 from 1:30-3:30 p.m."},{"k":"S902-1","no":"902","sec":"1","t":"AI Skills Boot Camp","ko":"AI 스킬 부트캠프","u":1.0,"ur":"1","cap":20,"g":"PU","m":[["MTWRF","1:30 PM","3:30 PM"]],"ex":"Other","p":"Edwards, Eli","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, and 1/12/27 in ROOM 2448. Prerequisite: Legal Research and Writing."},{"k":"S903-1","no":"903","sec":"1","t":"Children's Rights","ko":"아동 권리","u":1.0,"ur":"1","cap":30,"g":"LG","m":[["MTWRF","9:00 AM","10:35 AM"]],"ex":"Other","p":"TBD, TBD","c":"J","f":[],"n":"Course meets 1/4/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, 1/12/27, 1/13/27, and 1/14/27 in ROOM 1327."},{"k":"S905-1","no":"905","sec":"1","t":"The Law and Geopolitics of Green Development","ko":"녹색 개발의 법과 지정학","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["MTWRF","9:00 AM","11:55 AM"]],"ex":"Other","p":"Wang, Alex","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/2 7, 1/12/27, 1/13/27, and 1/14/27 in ROOM 2483. J-Term 2027 (3 credits) - No exam. Research paper (SAW eligible) due at end of Spring 2027."},{"k":"S907-1","no":"907","sec":"1","t":"Mergers and Acquisitions","ko":"M&A (단기)","u":2.0,"ur":"2","cap":30,"g":"LG","m":[["MTWRFS","9:00 AM","12:45 PM"]],"ex":"Other","p":"TBD, TBD","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/9/27, and 1/11/27 in ROOM 1357. Prerequisite: Law 230, Business Associations."},{"k":"S908-1","no":"908","sec":"1","t":"Suing the Police","ko":"경찰 상대 소송","u":2.0,"ur":"2","cap":20,"g":"LG","m":[["MTWRF","1:30 PM","4:45 PM"]],"ex":"Other","p":"Schwartz, Joanna","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, 1/12/27, and 1/13/27 in ROOM 2357. Prerequisite: Law 145, Civil Procedure. Early Drop Deadline: 12/15/26 at 5:00 p.m."},{"k":"S910-1","no":"910","sec":"1","t":"Law and Policy of Earth System Interventions","ko":"지구시스템 개입의 법","u":2.0,"ur":"2","cap":30,"g":"LG","m":[["MTWRF","9:00 AM","11:55 AM"]],"ex":"Other","p":"Parson, Edward","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/2 7, 1/12/27, 1/13/27, and 1/14/27 in ROOM 2448."},{"k":"S927-1","no":"927","sec":"1","t":"Human Rights in Action","ko":"인권 실천 (단기)","u":2.0,"ur":"2","cap":4,"g":"LG","m":[],"ex":"Other","p":"Berra, Joseph","c":"J","f":["exp"],"n":"Course meeting dates: 1/4-1/18/27. Students enrolled in Law 927 will automatically be enrolled in Law 793, Human Rights in Action Clinic in the Spring 2027 semester for 4 units. While not a requisite, interested students are encouraged to take Law 927, Regiona"},{"k":"S933-1","no":"933","sec":"1","t":"Ethical Challenges in Legal Practice","ko":"법조 실무의 윤리 쟁점","u":2.0,"ur":"2","cap":16,"g":"LG","m":[["MTWRF","1:30 PM","4:25 PM"]],"ex":"Other","p":"Kim, Sung Hui","c":"J","f":["exp"],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, 1/12/27, 1/13/27, and 1/14/27 in ROOM 2467. Early drop deadline: Friday, December 18, 2026."},{"k":"S946-1","no":"946","sec":"1","t":"Water Law","ko":"수자원법","u":2.0,"ur":"2","cap":30,"g":"LG","m":[["MTWRF","9:00 AM","12:15 PM"]],"ex":"Other","p":"Salzman, James","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/2 7, 1/12/27, and 1/13/27 in ROOM 2467."},{"k":"S972-1","no":"972","sec":"1","t":"Negotiation Theory and Practice","ko":"협상 이론과 실무 (단기)","u":3,"ur":"0","cap":95,"g":"NG","m":[["MTWRFS","9:00 AM","1:15 PM"]],"ex":"Other","p":"Korobkin / Conner /","c":"J","f":["exp"],"n":"Feldman / Vanderhooft / Skibbe Course meets: 1/4/27 - 1/14/27 (including Saturday, 1/9/27) in ROOM 1447. Rooms 1420, 1430, and 1457 will also be used as breakout rooms for this course. Students may not enroll and earn credit for both Law 785 and Law 972. Early"},{"k":"S975-1","no":"975","sec":"1","t":"Editing, Advocacy & AI","ko":"편집·변론과 AI","u":1.0,"ur":"1","cap":25,"g":"PU","m":[["MTWRF","1:30 PM","3:30 PM"]],"ex":"Other","p":"Barry, Patrick","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, and 1/12/27 in ROOM 3467."},{"k":"S987-1","no":"987","sec":"1","t":"Business Crime","ko":"기업범죄","u":2.0,"ur":"2","cap":35,"g":"LG","m":[["MTWRF","9:00 AM","11:55 AM"]],"ex":"Other","p":"Thaxton, Sherod","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, 1/12/27, 1/13/27, and 1/14/27 in ROOM 3467. Prerequisite: Law 309, Criminal Law."},{"k":"S989-1","no":"989","sec":"1","t":"Public School Law","ko":"공립학교법","u":1.0,"ur":"1","cap":30,"g":"LG","m":[["MTWRF","9:00 AM","11:00 AM"]],"ex":"Other","p":"Baldwin Clark, LaToya","c":"J","f":[],"n":"Course meets 1/4/27, 1/5/27, 1/6/27, 1/7/27, 1/8/27, 1/11/27, and 1/12/27 in ROOM 2357."},{"k":"S202-1","no":"202","sec":"1","t":"Criminal Procedure: Investigations","ko":"형사소송법: 수사","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Bakhshay, Shirin","c":"ADV","f":["jd"],"n":""},{"k":"S205-1","no":"205","sec":"1","t":"Wills and Trusts","ko":"유언·신탁법","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"5/4","p":"Wendel, Peter","c":"ADV","f":["jd"],"n":""},{"k":"S211-1","no":"211","sec":"1","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":64,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"5/4","p":"Scallen, Eileen","c":"ADV","f":["jd"],"n":"Prerequisite: Law 145, Civil Procedure."},{"k":"S211-2","no":"211","sec":"2","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":64,"g":"LG","m":[["MTR","9:10 AM","10:25 AM"]],"ex":"5/13","p":"Perluss, Dennis","c":"ADV","f":["jd"],"n":""},{"k":"S214-1","no":"214","sec":"1","t":"Civil Rights","ko":"민권법","u":4.0,"ur":"4","cap":80,"g":"LG","m":[["TR","5:30 PM","7:30 PM"]],"ex":"5/10","p":"Crenshaw, Kimberlé","c":"ADV","f":[],"n":"Pre/corequisite Law 148, Constitutional Law I."},{"k":"S220-1","no":"220","sec":"1","t":"Introduction to Federal Income Taxation","ko":"연방소득세법 입문","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["TR","8:50 AM","10:50 AM"]],"ex":"5/13","p":"Bank, Steven","c":"ADV","f":[],"n":""},{"k":"S220-2","no":"220","sec":"2","t":"Introduction to Federal Income Taxation","ko":"연방소득세법 입문","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["MW","5:30 PM","7:30 PM"]],"ex":"5/11","p":"Stark, Kirk","c":"ADV","f":[],"n":""},{"k":"S230-1","no":"230","sec":"1","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"5/12","p":"Bank, Steven","c":"ADV","f":["jd"],"n":""},{"k":"S230-2","no":"230","sec":"2","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["MTR","1:45 PM","3:00 PM"]],"ex":"5/7","p":"Park, James","c":"ADV","f":["jd"],"n":""},{"k":"S230-3","no":"230","sec":"3","t":"Business Associations","ko":"회사법","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Cummings, Scott","c":"ADV","f":["jd"],"n":""},{"k":"S236-1","no":"236","sec":"1","t":"Securities Regulation","ko":"증권규제법","u":4.0,"ur":"4","cap":120,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"4/30","p":"Restrepo, Fernán","c":"ADV","f":[],"n":"Pre/corequisite, Law 230, Business Associations."},{"k":"S244-1","no":"244","sec":"1","t":"Television Law","ko":"방송법","u":2.0,"ur":"2","cap":40,"g":"LG","m":[],"ex":"Other","p":"Johnson, Julia","c":"ADV","f":[],"n":"Pre or corequisite: Law 305, Entertainment Law."},{"k":"S248-1","no":"248","sec":"1","t":"Business Bankruptcy","ko":"기업도산법","u":4.0,"ur":"4","cap":34,"g":"LG","m":[["TWR","9:10 AM","10:25 AM"]],"ex":"5/13","p":"Bussel, Daniel","c":"ADV","f":[],"n":""},{"k":"S260-1","no":"260","sec":"1","t":"Labor Law I","ko":"노동법 I","u":4.0,"ur":"4","cap":49,"g":"LG","m":[["MWR","3:30 PM","4:45 PM"]],"ex":"5/6","p":"Zatz, Noah","c":"ADV","f":[],"n":""},{"k":"S266-1","no":"266","sec":"1","t":"Critical Race Theory","ko":"비판적 인종이론","u":4.0,"ur":"4","cap":40,"g":"LG","m":[["MWF","10:35 AM","11:50 AM"]],"ex":"5/3","p":"Morgan, Jamelia","c":"ADV","f":[],"n":"Prerequisite: Law 148, Constitutional Law I, or Law 113, Public Law, or pre/corequisite: Law 475, US Con Law - LLM. Priority given to students enrolled in the Critical Race Studies specialization program."},{"k":"S269-1","no":"269","sec":"1","t":"National Security Law","ko":"국가안보법","u":4.0,"ur":"4","cap":40,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Michaels, Jon","c":"ADV","f":[],"n":"Pre/corequisite: Law 148, Constitutional Law I."},{"k":"S270-1","no":"270","sec":"1","t":"Public International Law","ko":"국제공법","u":3.0,"ur":"3","cap":34,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"5/7","p":"Raustiala, Kal","c":"ADV","f":[],"n":""},{"k":"S274-1","no":"274","sec":"1","t":"Trademark Law","ko":"상표법","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["TR","8:50 AM","10:50 AM"]],"ex":"5/13","p":"Crittenden, John","c":"ADV","f":[],"n":""},{"k":"S277-1","no":"277","sec":"1","t":"Comparative Constitutional Law","ko":"비교헌법","u":4.0,"ur":"4","cap":30,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Gardbaum, Stephen","c":"ADV","f":[],"n":""},{"k":"S285-1","no":"285","sec":"1","t":"Local Government Law","ko":"지방자치법","u":4.0,"ur":"4","cap":45,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"5/4","p":"Cummings, Scott","c":"ADV","f":[],"n":""},{"k":"S286-1","no":"286","sec":"1","t":"Land Use","ko":"토지이용법","u":4.0,"ur":"4","cap":30,"g":"LG","m":[["MTR","10:35 AM","11:50 AM"]],"ex":"5/3","p":"Zasloff, Jonathan","c":"ADV","f":[],"n":"Prerequisite: Law 311, Property. Pre/corequisite, Law 112, Private Law."},{"k":"S287-1","no":"287","sec":"1","t":"Federal Indian Law II","ko":"연방 원주민법 II","u":3.0,"ur":"3","cap":38,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"5/7","p":"van Schilfgaarde, Lauren","c":"ADV","f":[],"n":"Prerequisite: Law 267, Federal Indian Law."},{"k":"S295-1","no":"295","sec":"1","t":"Criminal Procedure: Adjudication","ko":"형사소송법: 재판","u":4.0,"ur":"4","cap":72,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"5/12","p":"Eagly, Ingrid","c":"ADV","f":["jd"],"n":""},{"k":"S296-1","no":"296","sec":"1","t":"Habeas Corpus","ko":"인신보호영장","u":4.0,"ur":"4","cap":34,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"4/30","p":"Thaxton, Sherod","c":"ADV","f":[],"n":""},{"k":"S300-1","no":"300","sec":"1","t":"Remedies","ko":"구제법","u":4.0,"ur":"4","cap":68,"g":"LG","m":[["TR","1:10 PM","3:10 PM"]],"ex":"5/4","p":"Goodman, Patrick","c":"ADV","f":["jd"],"n":""},{"k":"S300-2","no":"300","sec":"2","t":"Remedies","ko":"구제법","u":4.0,"ur":"4","cap":80,"g":"LG","m":[["MW","8:25 AM","10:25 AM"]],"ex":"5/5","p":"Hasen, Richard","c":"ADV","f":["jd"],"n":""},{"k":"S302-1","no":"302","sec":"1","t":"Copyright Law","ko":"저작권법","u":4.0,"ur":"4","cap":90,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"4/30","p":"Netanel, Neil","c":"ADV","f":[],"n":""},{"k":"S303-1","no":"303","sec":"1","t":"Music Industry Law","ko":"음악산업법","u":2.0,"ur":"2","cap":72,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"5/11","p":"Genco, Susan","c":"ADV","f":[],"n":""},{"k":"S304-1","no":"304","sec":"1","t":"International Intellectual Property","ko":"국제 지식재산권","u":4.0,"ur":"4","cap":49,"g":"LG","m":[["TR","5:30 PM","7:30 PM"]],"ex":"5/10","p":"Pedraza-Fariña, Laura","c":"ADV","f":[],"n":""},{"k":"S305-1","no":"305","sec":"1","t":"Entertainment Law","ko":"엔터테인먼트법","u":3.0,"ur":"3","cap":72,"g":"LG","m":[["TR","1:45 PM","3:10 PM"]],"ex":"5/4","p":"Tang, Xiyin","c":"ADV","f":[],"n":""},{"k":"S307-1","no":"307","sec":"1","t":"Intellectual Property Law","ko":"지식재산권법 개관","u":4.0,"ur":"4","cap":73,"g":"LG","m":[["TR","8:50 AM","10:50 AM"]],"ex":"5/13","p":"Tang, Xiyin","c":"ADV","f":["consent"],"n":"Instructor consent required for students who have previously taken or are concurrently taking Law 302, Copyright Law, Law 306, Patent Law, or Law 274, Trademark Law."},{"k":"S309-1","no":"309","sec":"1","t":"Criminal Law","ko":"형법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"4/30","p":"Langer, Máximo","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S309-2","no":"309","sec":"2","t":"Criminal Law","ko":"형법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Dolovich, Sharon","c":"ADV","f":["l1"],"n":"1/5 Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S309-3","no":"309","sec":"3","t":"Criminal Law","ko":"형법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"5/5","p":"An, Yutian","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S309-4","no":"309","sec":"4","t":"Criminal Law","ko":"형법","u":4.0,"ur":"4","cap":30,"g":"LG","m":[["MTR","12:10 PM","1:25 PM"]],"ex":"4/30","p":"Wonsowicz, Pavel","c":"ADV","f":["app"],"n":"Application required and sent by invitation from the instructor."},{"k":"S311-1","no":"311","sec":"1","t":"Property","ko":"물권법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MTR","9:10 AM","10:25 AM"]],"ex":"5/13","p":"Baldwin Clark, LaToya","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S311-2","no":"311","sec":"2","t":"Property","ko":"물권법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MTR","10:35 AM","11:50 AM"]],"ex":"5/3","p":"Riley, Angela","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S311-3","no":"311","sec":"3","t":"Property","ko":"물권법","u":4.0,"ur":"4","cap":85,"g":"LG","m":[["MTR","9:10 AM","10:25 AM"]],"ex":"5/13","p":"Sander, Richard","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S311-4","no":"311","sec":"4","t":"Property","ko":"물권법","u":4.0,"ur":"4","cap":75,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"5/12","p":"Zasloff, Jonathan","c":"ADV","f":["l1"],"n":"Advanced students will have enrollment access to remaining seats during the over enrollment period."},{"k":"S312-1","no":"312","sec":"1","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":3.0,"ur":"3","cap":72,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"5/3","p":"Casey, Timothy","c":"ADV","f":["jd"],"n":""},{"k":"S312-2","no":"312","sec":"2","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":3.0,"ur":"3","cap":72,"g":"LG","m":[["M","5:30 PM","8:30 PM"]],"ex":"5/11","p":"Winkler, Adam","c":"ADV","f":["jd"],"n":""},{"k":"S312-3","no":"312","sec":"3","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":3.0,"ur":"3","cap":72,"g":"LG","m":[["MTR","10:35 AM","11:30 AM"]],"ex":"5/3","p":"Anastopoulo, Constance","c":"ADV","f":["jd"],"n":""},{"k":"S315-1","no":"315","sec":"1","t":"American Legal History","ko":"미국 법제사","u":3.0,"ur":"3","cap":34,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"5/7","p":"Gross, Ariela","c":"ADV","f":[],"n":""},{"k":"S318-1","no":"318","sec":"1","t":"Law and Sexuality","ko":"법과 섹슈얼리티","u":3.0,"ur":"3","cap":49,"g":"LG","m":[["TR","12:10 PM","1:35 PM"]],"ex":"4/30","p":"Franklin, Cary","c":"ADV","f":[],"n":""},{"k":"S322-1","no":"322","sec":"1","t":"Legislation and Statutory Interpretation","ko":"입법과 법령해석","u":3.0,"ur":"3","cap":49,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"5/7","p":"Hasen, Richard","c":"ADV","f":[],"n":""},{"k":"S326-1","no":"326","sec":"1","t":"Health Law and Policy","ko":"보건의료법","u":4.0,"ur":"4","cap":34,"g":"LG","m":[["MW","8:25 AM","10:25 AM"]],"ex":"5/5","p":"Wiley, Lindsay","c":"ADV","f":[],"n":""},{"k":"S328-1","no":"328","sec":"1","t":"Sports and the Law","ko":"스포츠법","u":2.0,"ur":"2","cap":42,"g":"LG","m":[["F","10:00 AM","12:00 PM"]],"ex":"5/10","p":"TBD, TBD","c":"ADV","f":[],"n":""},{"k":"S337-1","no":"337","sec":"1","t":"State Constitutional Law","ko":"주 헌법","u":4.0,"ur":"4","cap":25,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Highsmith, Brian","c":"ADV","f":[],"n":""},{"k":"S348-1","no":"348","sec":"1","t":"European Union Law","ko":"EU법","u":3.0,"ur":"3","cap":17,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"5/3","p":"Gardbaum, Stephen","c":"ADV","f":[],"n":""},{"k":"S363-1","no":"363","sec":"1","t":"Nonprofit Law and Policy","ko":"비영리법인법","u":3.0,"ur":"3","cap":40,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"5/3","p":"Aprill / Chan Loui","c":"ADV","f":[],"n":""},{"k":"S391-1","no":"391","sec":"1","t":"Venture Capital and the Start-up Company","ko":"벤처캐피털과 스타트업","u":3.0,"ur":"3","cap":18,"g":"LG","m":[["W","8:25 AM","11:25 AM"]],"ex":"5/5","p":"Woronoff, Michael","c":"ADV","f":[],"n":"Drop deadline: 1/25/27 at 5 p.m. Prerequisites: Law 100, Contracts OR Law 403, Contracts for Foreign Lawyers AND Law 230, Business Associations."},{"k":"S393-1","no":"393","sec":"1","t":"Written Legal Analysis","ko":"법률 문서 분석","u":2.0,"ur":"2","cap":24,"g":"PU","m":[["TR","9:00 AM","9:55 AM"]],"ex":"Other","p":"Goodman, Patrick","c":"ADV","f":["app"],"n":"Enrollment limited to JD students in their 3L year. Application required to enroll and can be found at Application deadline: 12:00 noon on 10/14/26."},{"k":"S394-1","no":"394","sec":"1","t":"Quantitative Methods","ko":"법학 계량분석","u":4.0,"ur":"4","cap":31,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"Other","p":"Sander, Richard","c":"ADV","f":[],"n":""},{"k":"S397-1","no":"397","sec":"1","t":"Advanced Legal Research","ko":"고급 법률 리서치","u":2.0,"ur":"2","cap":55,"g":"PU","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Hunter / Meyers","c":"ADV","f":[],"n":"Students cannot be concurrently enrolled in Law 108 A/B, Legal Research and Writing."},{"k":"S415-1","no":"415","sec":"1","t":"Financial Punishment","ko":"금전형벌","u":3.0,"ur":"3","cap":72,"g":"LG","m":[["TR","11:00 AM","12:25 PM"]],"ex":"4/30","p":"Colgan, Beth","c":"ADV","f":[],"n":""},{"k":"S417-1","no":"417","sec":"1","t":"Problem Solving in the Public Interest","ko":"공익 문제해결","u":3.0,"ur":"3","cap":45,"g":"LG","m":[["MW","10:00 AM","11:25 AM"]],"ex":"5/5","p":"Gamal, Fanna","c":"ADV","f":[],"n":"Law 417 is limited to students in EPILP. Enrollment processed by the Records Office."},{"k":"S419-1","no":"419","sec":"1","t":"Financial Concepts in Real Estate Transactions","ko":"부동산 거래의 재무 개념","u":3.0,"ur":"3","cap":44,"g":"LG","m":[["MW","1:45 PM","3:10 PM"]],"ex":"5/7","p":"Karlan, Mark","c":"ADV","f":[],"n":"Pre/corequisite: Law 311, Property."},{"k":"S421-1","no":"421","sec":"1","t":"Cross-Border Intellectual Property Litigation","ko":"국경 간 IP 소송","u":2.0,"ur":"2","cap":40,"g":"LG","m":[["W","10:00 AM","12:00 PM"]],"ex":"5/5","p":"Netanel, Neil","c":"ADV","f":[],"n":"This is an advanced intellectual property course. It is limited to students who have previously taken or are concurrently taking either an intellectual property survey course or at least one introductory course in copyright, patents, or trademarks in any law s"},{"k":"S426-1","no":"426","sec":"1","t":"Small and Mid-Size Law Practice","ko":"중소형 로펌 실무","u":1.0,"ur":"1","cap":80,"g":"PU","m":[["M","5:30 PM","7:20 PM"]],"ex":"Other","p":"Zohar, Daniel","c":"ADV","f":[],"n":"Course meets: 1/25/27 to 3/19/27."},{"k":"S429-1","no":"429","sec":"1","t":"Capital Punishment","ko":"사형제","u":4.0,"ur":"4","cap":34,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"5/12","p":"Thaxton, Sherod","c":"ADV","f":[],"n":""},{"k":"S430-1","no":"430","sec":"1","t":"Partnership and Passthrough Taxation","ko":"조합·도관과세","u":3.0,"ur":"3","cap":42,"g":"LG","m":[["TR","3:20 PM","4:45 PM"]],"ex":"5/12","p":"Oh, Jason","c":"ADV","f":[],"n":"Prerequisite: Law 220, Introduction to Federal Income Taxation."},{"k":"S435-1","no":"435","sec":"1","t":"Corporate Taxation","ko":"법인세법","u":3.0,"ur":"3","cap":42,"g":"LG","m":[["TR","1:10 PM","2:35 PM"]],"ex":"5/4","p":"Oh, Jason","c":"ADV","f":[],"n":"Prerequisite: Law 220, Introduction to Federal Income Taxation."},{"k":"S437-1","no":"437","sec":"1","t":"Telecommunications Regulation","ko":"통신규제법","u":2.0,"ur":"2","cap":34,"g":"LG","m":[["F","10:00 AM","12:00 PM"]],"ex":"5/10","p":"Lichtman, Douglas","c":"ADV","f":[],"n":""},{"k":"S444-1","no":"444","sec":"1","t":"Indigenous Peoples in International Law","ko":"국제법상 원주민","u":3.0,"ur":"3","cap":31,"g":"LG","m":[["MW","10:35 AM","12:00 PM"]],"ex":"5/3","p":"van Schilfgaarde, Lauren","c":"ADV","f":[],"n":""},{"k":"S447-1","no":"447","sec":"1","t":"Corporate Finance","ko":"기업재무","u":3.0,"ur":"3","cap":31,"g":"LG","m":[["TR","3:20 PM","4:45 PM"]],"ex":"5/12","p":"Parson, Edward","c":"ADV","f":[],"n":""},{"k":"S453-1","no":"453","sec":"1","t":"Lawyering in Admin. Agencies: Current Issues Facing the FCC","ko":"행정기관 실무: FCC 현안","u":2.0,"ur":"2","cap":34,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Williams, Sanford","c":"ADV","f":[],"n":""},{"k":"S459-1","no":"459","sec":"1","t":"Law and Gender","ko":"법과 젠더","u":3.0,"ur":"3","cap":34,"g":"LG","m":[["MW","3:20 PM","4:45 PM"]],"ex":"5/6","p":"Merrill, Cynthia","c":"ADV","f":[],"n":"Pre/corequisite: Law 148, Constitutional Law I, or Law 475, US Constitutional Law for Foreign Lawyers, or Law 113, Public Law."},{"k":"S463-1","no":"463","sec":"1","t":"Regional Human Rights Systems","ko":"지역 인권체제","u":3.0,"ur":"3","cap":13,"g":"LG","m":[["TR","1:45 PM","3:10 PM"]],"ex":"Other","p":"Berra, Joseph","c":"ADV","f":[],"n":"Early drop deadline: 1/22/27 at 5:00 p.m."},{"k":"S472-1","no":"472","sec":"1","t":"Human Rights and the Climate Crisis","ko":"인권과 기후위기","u":1.0,"ur":"1","cap":20,"g":"LG","m":[["MWF","9:00 AM","10:25 AM"]],"ex":"Other","p":"Mackintosh, Kate","c":"ADV","f":[],"n":"Course meets: 2/1/27 - 2/22/27. Final Exam: In-Class Exam on 2/26/27. Early drop deadline: 2/1/27 at 5:00 p.m."},{"k":"S480-1","no":"480","sec":"1","t":"Motion Picture/Television Special Issues","ko":"영화·TV 특수 쟁점","u":2.0,"ur":"2","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"5/10","p":"Ziffren, Kenneth","c":"ADV","f":["app"],"n":"Application required to enroll and can be found at Application deadline: 12:00 noon on 10/14/26."},{"k":"S481-1","no":"481","sec":"1","t":"Harmonizing Hollywood: Disputes, Ethics & Peacemaking","ko":"할리우드 분쟁·윤리","u":2.0,"ur":"2","cap":30,"g":"LG","m":[["F","1:45 PM","3:45 PM"]],"ex":"5/11","p":"Anschell, Jonathan","c":"ADV","f":[],"n":""},{"k":"S484-1","no":"484","sec":"1","t":"Information Privacy and Data Protection","ko":"정보 프라이버시·데이터 보호법","u":4.0,"ur":"4","cap":49,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"4/30","p":"Selbst, Andrew","c":"ADV","f":[],"n":""},{"k":"S489-1","no":"489","sec":"1","t":"Future Law","ko":"미래법: 신기술과 거버넌스","u":3.0,"ur":"3","cap":25,"g":"LG","m":[["TR","9:00 AM","10:25 AM"]],"ex":"Other","p":"Parson, Edward","c":"ADV","f":[],"n":""},{"k":"S490-1","no":"490","sec":"1","t":"Energy and Infrastructure Finance","ko":"에너지·인프라 금융","u":2.0,"ur":"2","cap":49,"g":"LG","m":[["W","5:30 PM","8:30 PM"]],"ex":"Other","p":"Marks, Allan","c":"ADV","f":[],"n":"Course meets 1/20/27 - 3/17/27. Final Exam: In-Class Exam on 3/19/27."},{"k":"S491-1","no":"491","sec":"1","t":"Private Merger and Acquisition Transactions","ko":"비상장 M&A 거래","u":2.0,"ur":"2","cap":36,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"5/12","p":"Zaheer, David","c":"ADV","f":[],"n":"Prerequisite: Law 230, Business Associations OR Law 115, Business Law for Non-Lawyers. Course meets 1/21/27 to 4/22/27."},{"k":"S505B-1","no":"505B","sec":"1","t":"Seminar: Major Problems in Environment and Sustainability (Spring)","ko":"세미나: 환경·지속가능성 (봄)","u":2.0,"ur":"2(4)","cap":10,"g":"LG","m":[["W","4:00 PM","7:00 PM"]],"ex":"Other","p":"Boyd, William","c":"SEM","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. Course meets: 1/20, 2/3, 2/17, 3/3, 3/17, 3/31, 4/7, and 4/14/2027."},{"k":"S508-1","no":"508","sec":"1","t":"Seminar: Food Law and Policy","ko":"세미나: 식품법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Roberts, Michael","c":"SEM","f":[],"n":""},{"k":"S510-1","no":"510","sec":"1","t":"Seminar: Transnational Litigation","ko":"세미나: 국제소송","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["W","10:00 AM","12:00 PM"]],"ex":"Other","p":"Sweetser, Catherine","c":"SEM","f":[],"n":""},{"k":"S515-1","no":"515","sec":"1","t":"Seminar: The Entrepreneurial State","ko":"세미나: 기업가형 국가","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Michaels, Jon","c":"SEM","f":[],"n":"Early drop deadline: 1/22/27 at 5 p.m. Prerequisite: Law 148, Constitutional Law I."},{"k":"S538-1","no":"538","sec":"1","t":"Seminar: Innovation Theory and Intellectual Property","ko":"세미나: 혁신이론과 지식재산권","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["R","1:10 PM","3:10 PM"]],"ex":"Other","p":"Pedraza-Fariña, Laura","c":"SEM","f":[],"n":""},{"k":"S544-1","no":"544","sec":"1","t":"Seminar: Antitrust and IP in the Digital Economy","ko":"세미나: 디지털 경제의 독점규제와 IP","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Dixton, Jennifer","c":"SEM","f":[],"n":"Prerequisite: Law 240, Antitrust Law (or by professor approval). Pre/corequisite: Law 307, Intellectual Property (or other IP course including Copyright, Patent, or Trademark Law or equivalent)."},{"k":"S555-1","no":"555","sec":"1","t":"Seminar: Legal Theory Workshop","ko":"세미나: 법이론 워크숍","u":3.0,"ur":"3","cap":15,"g":"LG","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Greenberg, Mark","c":"SEM","f":[],"n":""},{"k":"S566-1","no":"566","sec":"1","t":"Seminar: International Humanitarian Law","ko":"세미나: 국제인도법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["M","3:20 PM","5:20 PM"]],"ex":"Other","p":"Peake, Jessica","c":"SEM","f":[],"n":""},{"k":"S571-1","no":"571","sec":"1","t":"Seminar: Legal History Workshop","ko":"세미나: 법사학 워크숍","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["M","3:20 PM","6:20 PM"]],"ex":"Other","p":"Gross, Ariela","c":"SEM","f":[],"n":""},{"k":"S572B-1","no":"572B","sec":"1","t":"Skills Writing Advisor (Spring)","ko":"작문 어드바이저 (봄)","u":1.0,"ur":"1(3)","cap":65,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Baril, Jessica","c":"SEM","f":[],"n":"Second part of a year-long course. The Records office will process enrollment for this course and its companion course, Law 346."},{"k":"S575-1","no":"575","sec":"1","t":"Seminar: Regulation of Investment Funds","ko":"세미나: 투자펀드 규제","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","10:00 AM","12:00 PM"]],"ex":"Other","p":"Restrepo, Fernán","c":"SEM","f":[],"n":"Prerequisite: Law 230, Business Associations OR Law 115, Business Law for Non-Lawyers. Law 236, Securities Regulation encouraged but not required."},{"k":"S597-1","no":"597","sec":"1","t":"Seminar: Place, Race, Power","ko":"세미나: 장소·인종·권력","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["T","1:10 PM","3:10 PM"]],"ex":"Other","p":"Highsmith, Brian","c":"SEM","f":[],"n":""},{"k":"S614-1","no":"614","sec":"1","t":"Seminar: Global Perspectives on Criminal Procedure","ko":"세미나: 비교 형사소송","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["M","10:00 AM","12:00 PM"]],"ex":"Other","p":"Langer, Máximo","c":"SEM","f":[],"n":""},{"k":"S619-1","no":"619","sec":"1","t":"Seminar: Environmental Justice Law","ko":"세미나: 환경정의법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["R","5:30 PM","7:30 PM"]],"ex":"Other","p":"Martinez / Espino-Padron","c":"SEM","f":[],"n":""},{"k":"S621-1","no":"621","sec":"1","t":"Seminar: International Trade Law","ko":"세미나: 국제통상법","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Steinberg, Richard","c":"SEM","f":[],"n":"Early drop deadline: 1/21/27 at 5:20 p.m."},{"k":"S629-1","no":"629","sec":"1","t":"Seminar: Post-Conviction Law","ko":"세미나: 유죄판결 이후 구제","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Paper","p":"Dolovich, Sharon","c":"SEM","f":[],"n":""},{"k":"S636-1","no":"636","sec":"1","t":"Seminar: Issues in Chinese Law","ko":"세미나: 중국법","u":3.0,"ur":"3","cap":18,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"An, Yutian","c":"SEM","f":[],"n":""},{"k":"S661-1","no":"661","sec":"1","t":"Seminar: Latinx People and the Law","ko":"세미나: 라틴계와 법","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Ramírez, Saúl","c":"SEM","f":[],"n":""},{"k":"S683-1","no":"683","sec":"1","t":"Seminar: Media Law in the Digital Age","ko":"세미나: 디지털 시대 미디어법","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Cohen, Dale","c":"SEM","f":["app"],"n":"Application required to enroll and can be found at Application deadline: 12:00 noon on 10/14/26."},{"k":"S561B-1","no":"561B","sec":"1","t":"Perspectives: Law In Film","ko":"독서 세미나: Law In Film","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Arnold, Alexander","c":"PER","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. All course meetings occurred during the Fall 2026 semester. Students enrolled in Law 561A will be enrolled in Law 561B for 0.5 units, but no class meetings will take pla"},{"k":"S561B-2","no":"561B","sec":"2","t":"Perspectives: Human Law Ai World","ko":"독서 세미나: Human Law Ai World","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Gamal, Fanna","c":"PER","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. Course meets: 9/25, 10/30, 11/20, 3/12, and 4/23 at 12:00PM on UCLA campus except 10/30 meeting (4:30PM at Jackson Market, Culver City). This is the second half of a yea"},{"k":"S561B-4","no":"561B","sec":"4","t":"Perspectives: Graphic Novels","ko":"독서 세미나: Graphic Novels","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Lichtman, Douglas","c":"PER","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. Course meets: 9/20, 10/25, 1/24, 2/21, and 3/14 from 6:00 to 8:30PM."},{"k":"S561B-5","no":"561B","sec":"5","t":"Perspectives: Art Is A Drug","ko":"독서 세미나: Art Is A Drug","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Riley, Angela","c":"PER","f":[],"n":"2/5 This is the second half of a year-long course. Enrollment processed by the Records Office. Course meets: 9/1, 10/20, 11/3, AND 1/19 OR 1/26, AND 2/16 OR 3/2 at 7:00 p.m. (Hold 1/26 and 3/2 as possible meeting dates; there will only be 5 meeting dates.)"},{"k":"S561B-6","no":"561B","sec":"6","t":"Perspectives: Law And Theater","ko":"독서 세미나: Law And Theater","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Verstein, Andrew","c":"PER","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. Course meets: Five Sundays at instructor's home from 12:00-2:30 PM, plus up to five additional times at theaters to see plays: 9/23, 4:00 p.m; 9/26, 12:00 p.m.; 11/12, 7"},{"k":"S561B-7","no":"561B","sec":"7","t":"Perspectives: Great Frauds","ko":"독서 세미나: Great Frauds","u":0.5,"ur":"0.5(1)","cap":12,"g":"PU","m":[],"ex":"Other","p":"Zolt, Eric","c":"PER","f":[],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office. The course will meet during Spring semester 2027 from 6:00-8:30 in Hancock Park. Planned sessions are January 27, February 17, March 3, March 17, and April 14."},{"k":"S700-1","no":"700","sec":"1","t":"Clinical: Pretrial Civil Litigation","ko":"클리닉: 민사 소송 실무","u":4.0,"ur":"4","cap":16,"g":"PU","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Wetzstein, Sarah","c":"CLIN","f":["exp"],"n":""},{"k":"S702-1","no":"702","sec":"1","t":"Clinical: Depositions and Discovery","ko":"클리닉: 증언녹취·증거개시","u":4.0,"ur":"4","cap":18,"g":"PU","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Light, Jason","c":"CLIN","f":["exp"],"n":""},{"k":"S702-2","no":"702","sec":"2","t":"Clinical: Depositions and Discovery","ko":"클리닉: 증언녹취·증거개시","u":4.0,"ur":"4","cap":18,"g":"PU","m":[["TR","1:10 PM","3:10 PM"]],"ex":"Other","p":"Light, Jason","c":"CLIN","f":["exp"],"n":""},{"k":"S703-1","no":"703","sec":"1","t":"Clinical: Applied Energy Law","ko":"클리닉: 에너지법 실무","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["F","1:45 PM","4:45 PM"]],"ex":"Other","p":"Grab, Denise","c":"CLIN","f":["exp"],"n":""},{"k":"S705-1","no":"705","sec":"1","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","3:20 PM","4:15 PM"],["W","3:20 PM","6:20 PM"]],"ex":"Other","p":"Forrest / Bernstein","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/22/27 at 5:00 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"S705-2","no":"705","sec":"2","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","3:20 PM","4:15 PM"],["R","5:30 PM","8:30 PM"]],"ex":"Other","p":"Bernstein / TBD","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/22/27 at 5:00 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"S705-3","no":"705","sec":"3","t":"Clinical: Trial Advocacy","ko":"클리닉: 법정 변론","u":4.0,"ur":"4","cap":12,"g":"PU","m":[["T","3:20 PM","4:15 PM"],["W","5:30 PM","8:30 PM"]],"ex":"Other","p":"Bernstein / TBD","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/22/27 at 5:00 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"S707-1","no":"707","sec":"1","t":"Clinical: Mediation","ko":"클리닉: 조정","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Wetzstein, Sarah","c":"CLIN","f":["exp"],"n":"This is a device-free class. See course description for more information and CAE exceptions."},{"k":"S712-1","no":"712","sec":"1","t":"Clinical: Street Law","ko":"클리닉: 스트리트 로","u":3.0,"ur":"3","cap":18,"g":"PU","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Tolbert, Tony","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/14/27 at 5:00 p.m. Prerequisites: Law 309, Criminal Law AND Law 311, Property."},{"k":"S719-1","no":"719","sec":"1","t":"Clinical: Environmental Law","ko":"클리닉: 환경법","u":6.0,"ur":"6","cap":12,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Horowitz / Stein","c":"CLIN","f":["exp"],"n":"Drops not allowed once students are accepted."},{"k":"S722-1","no":"722","sec":"1","t":"Clinical: Mediation Clinic","ko":"클리닉: 조정 실무","u":4.0,"ur":"4","cap":4,"g":"LG","m":[["M","10:00 AM","12:00 PM"]],"ex":"Other","p":"Lanning, Deirdre","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/8/27 at 5:00 p.m. Prerequisite: Law 707, Mediation."},{"k":"S725-1","no":"725","sec":"1","t":"Clinical: Supreme Court Clinic","ko":"클리닉: 연방대법원","u":5.0,"ur":"5","cap":6,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Banner, Stuart","c":"CLIN","f":["exp"],"n":""},{"k":"S727-1","no":"727","sec":"1","t":"Clinical: Supreme Court Simulation","ko":"연방대법원 시뮬레이션","u":2.0,"ur":"2","cap":11,"g":"LG","m":[["M","10:00 AM","12:00 PM"]],"ex":"Other","p":"Winkler, Adam","c":"CLIN","f":["exp"],"n":""},{"k":"S727-2","no":"727","sec":"2","t":"Clinical: Supreme Court Simulation","ko":"연방대법원 시뮬레이션","u":2.0,"ur":"2","cap":11,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Winkler, Adam","c":"CLIN","f":["exp"],"n":""},{"k":"S728-1","no":"728","sec":"1","t":"Clinical: Tribal Legal Development","ko":"클리닉: 원주민 법제 개발","u":4.0,"ur":"4","cap":10,"g":"LG","m":[["T","10:00 AM","12:00 PM"]],"ex":"Other","p":"Llerandi, Mica","c":"CLIN","f":["exp"],"n":""},{"k":"S730-1","no":"730","sec":"1","t":"Clinical: Veterans Justice","ko":"클리닉: 재향군인","u":6.0,"ur":"6","cap":6,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Nishimoto, Jeanne","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/8/27 at 5:00 p.m."},{"k":"S733-1","no":"733","sec":"1","t":"Clinical: Pretrial Criminal Litigation","ko":"클리닉: 형사 소송 실무","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Cotton, Gerloni","c":"CLIN","f":["exp"],"n":"Prerequisite: Law 309, Criminal Law. Corequisite: Law 211, Evidence."},{"k":"S734-1","no":"734","sec":"1","t":"Clinical: Housing Justice","ko":"클리닉: 주거 정의","u":6.0,"ur":"6","cap":10,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Nickell, Matt","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/8/27 at 5:00 p.m. Pre or corequisite: Law 211, Evidence."},{"k":"S744-1","no":"744","sec":"1","t":"Clinical: Merger and Acquisition Transactions","ko":"클리닉: M&A 거래 실무","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","11:00 AM","1:00 PM"]],"ex":"Other","p":"Karlsson, Sarah","c":"CLIN","f":["exp"],"n":"Pre or corequisite: Law 230, Business Associations or Law 115, Business Law for Non-Lawyers and Law 112, Private Law."},{"k":"S751-1","no":"751","sec":"1","t":"Clinical: Transactional Skills","ko":"클리닉: 거래 실무 스킬","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["TR","1:45 PM","3:10 PM"]],"ex":"Other","p":"Conner, Jeffrey","c":"CLIN","f":["exp"],"n":"Students may not enroll and earn credit for both Law 751 and Law 763."},{"k":"S759-1","no":"759","sec":"1","t":"Clinical: Life Cycle of a Business","ko":"클리닉: 기업 생애주기","u":3.0,"ur":"3","cap":16,"g":"LG","m":[["TR","11:00 AM","12:25 PM"]],"ex":"Other","p":"Wertlieb, Neil","c":"CLIN","f":["exp"],"n":"Prerequisite: Law 230, Business Associations OR Law 115, Business Law for Non-Lawyers."},{"k":"S760B-1","no":"760B","sec":"1","t":"Clinical: Patent (Spring)","ko":"클리닉: 특허 (봄)","u":3.0,"ur":"3(6)","cap":8,"g":"LG","m":[["R","5:30 PM","7:30 PM"]],"ex":"Other","p":"Chong, Eugene","c":"CLIN","f":["exp"],"n":"This is the second half of a year-long course. Enrollment processed by the Records Office."},{"k":"S762-1","no":"762","sec":"1","t":"Appellate Advocacy: Moot Court","ko":"항소 변론 모의법정","u":2.0,"ur":"2","cap":20,"g":"LG","m":[["W","3:20 PM","5:20 PM"]],"ex":"Other","p":"Gomez, Michael","c":"CLIN","f":["exp"],"n":"Prerequisite: Completion of Appellate Advocacy: Introduction to Moot Court Competitions. Pre/corequisite: Participation in external moot court competition. Limited to students on the Moot Court Honors Board and students who are participating in external moot c"},{"k":"S763-1","no":"763","sec":"1","t":"Clinical: Contract Drafting","ko":"클리닉: 계약서 작성","u":4.0,"ur":"4","cap":16,"g":"LG","m":[["TR","3:20 PM","5:20 PM"]],"ex":"Other","p":"Karlsson, Sarah","c":"CLIN","f":["exp"],"n":"Students may not enroll and earn credit for both Law 751 and 763."},{"k":"S766-1","no":"766","sec":"1","t":"Clinical: Information Policy Lab","ko":"클리닉: 정보정책 랩","u":4.0,"ur":"4","cap":20,"g":"PU","m":[["W","10:00 AM","12:00 PM"]],"ex":"Other","p":"Dincer, Melodi","c":"CLIN","f":["exp"],"n":""},{"k":"S769-1","no":"769","sec":"1","t":"Clinical: Documentary Film","ko":"클리닉: 다큐멘터리 영화","u":4.0,"ur":"4","cap":13,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Cohen / Sundra","c":"CLIN","f":["exp"],"n":""},{"k":"S773-1","no":"773","sec":"1","t":"Clinical: Immigrant Rights","ko":"클리닉: 이민자 권리","u":5.0,"ur":"5","cap":9,"g":"LG","m":[["WF","10:00 AM","12:00 PM"]],"ex":"Other","p":"Motomura / Inlender","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/8/27 at 5 p.m."},{"k":"S789-1","no":"789","sec":"1","t":"Advanced Criminal Trial Advocacy","ko":"고급 형사 변론","u":4.0,"ur":"4","cap":16,"g":"PU","m":[["M","5:30 PM","7:30 PM"],["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Cardona, George","c":"CLIN","f":["exp"],"n":"Preerquisites: Law 211, Evidence AND Law 309, Criminal Law AND one or more of: Law 705, Trial Advocacy, Law 720, Criminal Trial Advocacy, Law 977, Advanced Trial Advocacy."},{"k":"S793-1","no":"793","sec":"1","t":"Clinical: Human Rights in Action","ko":"클리닉: 인권 실천","u":4.0,"ur":"4","cap":4,"g":"LG","m":[],"ex":"Other","p":"Berra, Joseph","c":"CLIN","f":["exp"],"n":"Early drop deadline: 11/13/26. Meeting days and times to be determined in consultation with the instructor prior to the start of the spring semester. Pre/corequisite: Law 463, Regional Human Rights Systems: The Inter-American System."},{"k":"S796-1","no":"796","sec":"1","t":"Clinical: Health Care Compliance","ko":"클리닉: 헬스케어 컴플라이언스","u":2.0,"ur":"2","cap":16,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Shankar, Anil","c":"CLIN","f":["exp"],"n":""},{"k":"S798-1","no":"798","sec":"1","t":"Trial Practice","ko":"공판 실무","u":3.0,"ur":"3","cap":12,"g":"LG","m":[["F","9:00 AM","12:00 PM"]],"ex":"Other","p":"Bernstein, Justin","c":"CLIN","f":["exp"],"n":"Limited to students on external trial team. Enrollment processed by Records Office. Prerequisites: Law 211, Evidence; Law 705, Trial Advocacy."},{"k":"S798-2","no":"798","sec":"2","t":"Trial Practice","ko":"공판 실무","u":3.0,"ur":"3","cap":10,"g":"LG","m":[["F","12:00 PM","3:00 PM"]],"ex":"Other","p":"Bernstein, Justin","c":"CLIN","f":["exp"],"n":"Limited to students on external trial team. Enrollment processed by Records Office. Prerequisites: Law 211, Evidence; Law 705, Trial Advocacy."},{"k":"S802-1","no":"802","sec":"1","t":"Entrepreneurship Practicum","ko":"스타트업 프랙티컴","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["M","8:25 AM","10:25 AM"]],"ex":"Other","p":"Dorff / Mayberry / Van","c":"CLIN","f":["exp"],"n":"Ligten This course has two parts, for a total of 4 units: the seminar (802) for 2 units and the field placement (810) for 2 units. Prerequisite: Law 230, Business Associations."},{"k":"S805-1","no":"805","sec":"1","t":"Externship Seminar: Criminal","ko":"익스턴십 세미나: 형사","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Shin, Donghyuk","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets 1/13, 1/27, 2/10, 2/24, 3/10, 3/17, 3/31, and 4/14."},{"k":"S806-1","no":"806","sec":"1","t":"Externship Seminar: Judicial","ko":"익스턴십 세미나: 법원","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["W","6:00 PM","8:00 PM"]],"ex":"Other","p":"Hanasono, Mark","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: 1/20, 2/3, 2/17, 3/3, 3/17, 4/7, and 4/21."},{"k":"S807-1","no":"807","sec":"1","t":"Externship Seminar: Public Interest","ko":"익스턴십 세미나: 공익","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Koenig, Stuart","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: TBA."},{"k":"S808-1","no":"808","sec":"1","t":"Externship Seminar: Government/Civil","ko":"익스턴십 세미나: 정부·민사","u":1.0,"ur":"1","cap":15,"g":"LG","m":[["W","6:00 PM","8:00 PM"]],"ex":"Other","p":"Toma, James","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: TBA."},{"k":"S809-1","no":"809","sec":"1","t":"Externship Seminar: Entertainment/Corporate","ko":"익스턴십 세미나: 엔터·기업","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Lee, Vivian","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: 1/25, 2/8, 2/22, 3/8, 3/29, 4/12, and 4/26/2027."},{"k":"S810-1","no":"810","sec":"1","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":12,"g":"PU","m":[],"ex":"Other","p":"Blasi / Narro","c":"CLIN","f":["rec_office"],"n":"Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 834."},{"k":"S810-2","no":"810","sec":"2","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":12,"g":"PU","m":[],"ex":"Other","p":"Dorff / Mayberry / Van","c":"CLIN","f":["rec_office"],"n":"Ligten Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 802."},{"k":"S810-3","no":"810","sec":"3","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":6,"g":"PU","m":[],"ex":"Other","p":"Park, K-Sue","c":"CLIN","f":["rec_office"],"n":"Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 816."},{"k":"S810-4","no":"810","sec":"4","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":12,"g":"PU","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["rec_office"],"n":"Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 837."},{"k":"S810-5","no":"810","sec":"5","t":"Practicum Field Placement","ko":"프랙티컴 현장실습","u":2.0,"ur":"2","cap":6,"g":"PU","m":[],"ex":"Other","p":"Weiss, Joshua","c":"CLIN","f":["rec_office"],"n":"Enrollments in this course will be processed by the Records Office. This is the companion field placement for Law 818."},{"k":"S814-1","no":"814","sec":"1","t":"Externship Seminar: Federal Public Defender","ko":"익스턴십 세미나: 연방 국선","u":2.0,"ur":"2","cap":10,"g":"LG","m":[["W","5:30 PM","7:30 PM"]],"ex":"Other","p":"Drozdowski / Shah","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office. Course meets: TBA."},{"k":"S815-1","no":"815","sec":"1","t":"Lawyering in Practice","ko":"실무 속 변호","u":1.0,"ur":"1","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Mora, Clara","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S816-1","no":"816","sec":"1","t":"Practicum: Reparations & Black Land Loss","ko":"프랙티컴: 배상과 토지 상실","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Park, K-Sue","c":"CLIN","f":["exp"],"n":"This course has two parts, for a total of 4 units: the seminar (816) for 2 units and the field placement (810) for 2 units. Prerequisite: Law 311, Property."},{"k":"S818-1","no":"818","sec":"1","t":"Practicum: Resentencing","ko":"프랙티컴: 재양형","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["R","1:10 PM","3:10 PM"]],"ex":"Other","p":"Weiss, Joshua","c":"CLIN","f":["exp"],"n":"Early drop deadline: 1/8/27 at 5:00 p.m. This course has two parts, for a total of 4 units: the seminar (818) for 2 units and the field placement (810) for 2 units."},{"k":"S834-1","no":"834","sec":"1","t":"Practicum: Organizing Low-Wage Workers","ko":"프랙티컴: 저임금 노동자 조직","u":2.0,"ur":"2","cap":12,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"Other","p":"Blasi / Narro","c":"CLIN","f":["exp"],"n":"This course has two parts, for a total of 4 units: the seminar (834) for 2 units and the field placement (810) for 2 units."},{"k":"S837-1","no":"837","sec":"1","t":"Practicum: Domestic Violence Prevention","ko":"프랙티컴: 가정폭력 예방","u":2.0,"ur":"2","cap":6,"g":"LG","m":[["T","3:20 PM","5:20 PM"]],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["exp"],"n":"This course has two parts, for a total of 4 units: the seminar (837) for 2 units and the field placement (810) for 2 units. Prerequisite: Law 211, Evidence. Law 317, Family Law is recommended but not required."},{"k":"S850A-1","no":"850A","sec":"1","t":"Advanced Judicial Process (Full-time Extern)","ko":"법원 익스턴십 (풀타임)","u":11.0,"ur":"11","cap":16,"g":"PU","m":[],"ex":"Other","p":"Barash / Sidwell","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S850B-1","no":"850B","sec":"1","t":"Advanced Judicial Process","ko":"법원 익스턴십 세미나","u":2.0,"ur":"2","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Barash, Martin","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S851A-1","no":"851A","sec":"1","t":"Agency Externship (Full-time)","ko":"기관 익스턴십 (풀타임)","u":11.0,"ur":"11","cap":10,"g":"PU","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S851B-1","no":"851B","sec":"1","t":"Agency Externship Seminar","ko":"기관 익스턴십 세미나","u":2.0,"ur":"2","cap":12,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S852A-1","no":"852A","sec":"1","t":"Externship: UC in DC","ko":"워싱턴 DC 익스턴십","u":10.0,"ur":"10","cap":10,"g":"PU","m":[],"ex":"Other","p":"Lehtman, Nicole","c":"CLIN","f":["extn"],"n":"3/5 Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S852B-1","no":"852B","sec":"1","t":"Externship: UC in DC Seminar","ko":"워싱턴 DC 익스턴십 세미나","u":3.0,"ur":"3","cap":10,"g":"LG","m":[],"ex":"Other","p":"Lehtman, Nicole","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S870A-1","no":"870A","sec":"1","t":"UCLA in NYC","ko":"뉴욕 익스턴십","u":10.0,"ur":"10","cap":3,"g":"PU","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S870B-1","no":"870B","sec":"1","t":"UCLA in NYC Seminar","ko":"뉴욕 익스턴십 세미나","u":3.0,"ur":"3","cap":3,"g":"LG","m":[],"ex":"Other","p":"Sidwell, Anne","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S871A-1","no":"871A","sec":"1","t":"Externship: UCLA Law in the Hague","ko":"헤이그 익스턴십","u":11.0,"ur":"11","cap":10,"g":"PU","m":[],"ex":"Other","p":"Sidwell / Mackintosh","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S871B-1","no":"871B","sec":"1","t":"Externship: UCLA Law in the Hague Seminar","ko":"헤이그 익스턴십 세미나","u":2.0,"ur":"2","cap":10,"g":"LG","m":[],"ex":"Other","p":"Sidwell / Mackintosh","c":"CLIN","f":["extn"],"n":"Enrollment in this course will be processed by the Records Office, when approved by the Externship Office."},{"k":"S211-3","no":"211","sec":"3","t":"Evidence","ko":"증거법","u":4.0,"ur":"4","cap":80,"g":"LG","m":[["MW","3:20 PM","5:20 PM"]],"ex":"5/6","p":"Reich, Peter","c":"LLM","f":["llm"],"n":""},{"k":"S312-4","no":"312","sec":"4","t":"Professional Responsibility","ko":"직업윤리(법조윤리)","u":2.0,"ur":"2","cap":85,"g":"LG","m":[["F","1:45 PM","3:45 PM"]],"ex":"5/11","p":"Carlson, Michael","c":"LLM","f":["llm"],"n":""},{"k":"S403-1","no":"403","sec":"1","t":"Contracts for Foreign Lawyers","ko":"계약법 (외국 변호사용)","u":2.0,"ur":"2","cap":50,"g":"LG","m":[["M","5:30 PM","7:30 PM"]],"ex":"5/11","p":"Khan, Amjad","c":"LLM","f":["llm"],"n":"Students may not enroll and earn credit for both Law 403 and 413."},{"k":"S404-1","no":"404","sec":"1","t":"Civil Procedure for Foreign Lawyers","ko":"민사소송법 (외국 변호사용)","u":2.0,"ur":"2","cap":50,"g":"LG","m":[["R","5:30 PM","7:30 PM"]],"ex":"5/4","p":"TBD, TBD","c":"LLM","f":["llm"],"n":""},{"k":"S406-1","no":"406","sec":"1","t":"Legal Analysis, Writing, and Research for LL.M.s","ko":"리서치·작문 (LL.M.)","u":2.0,"ur":"2","cap":21,"g":"PU","m":[["R","3:20 PM","5:20 PM"]],"ex":"Other","p":"Alkhawaja, Osama","c":"LLM","f":["llm"],"n":"Early drop deadline: 1/8/27 at 5 p.m."},{"k":"S413-1","no":"413","sec":"1","t":"Contract Law: Analysis and Application","ko":"계약법 분석과 적용 (LL.M.)","u":2.0,"ur":"2","cap":35,"g":"LG","m":[["W","10:00 AM","12:00 PM"]],"ex":"5/5","p":"Park, Jin","c":"LLM","f":["llm"],"n":"Students may not enroll and earn credit for both Law 403 and 413."},{"k":"S475-1","no":"475","sec":"1","t":"U.S. Constitutional Law for Foreign Lawyers","ko":"미국 헌법 (외국 변호사용)","u":2.0,"ur":"2","cap":80,"g":"LG","m":[["T","5:30 PM","7:30 PM"]],"ex":"5/10","p":"Reich, Peter","c":"LLM","f":["llm"],"n":""},{"k":"S763-2","no":"763","sec":"2","t":"Clinical: Contract Drafting","ko":"클리닉: 계약서 작성","u":3.0,"ur":"3","cap":20,"g":"LG","m":[["W","5:30 PM","8:30 PM"]],"ex":"Other","p":"Cohen, Eric","c":"LLM","f":["llm","llmexp"],"n":"Students may not enroll and earn credit for both Law 751 and 763. Early drop deadline: 1/21/27 at 5 p.m."},{"k":"S785-1","no":"785","sec":"1","t":"Clinical: Negotiation Theory and Practice","ko":"클리닉: 협상 이론과 실무","u":3.0,"ur":"3","cap":24,"g":"LG","m":[["T","6:00 PM","9:00 PM"]],"ex":"Other","p":"Conner, Jeffrey","c":"LLM","f":["llm","llmexp"],"n":"Students may not enroll and earn credit for both Law 785 and 972. Early drop deadline: 12/31/26 at 5:00 p.m."}]};
+(function(){
+'use strict';
+const FALL=DATA.fall, SPR=DATA.spring;
+const ALL={}; FALL.concat(SPR).forEach(c=>ALL[c.k]=c);
+const DAYS=['M','T','W','R','F'], DAYKO={M:'월',T:'화',W:'수',R:'목',F:'금',S:'토',U:'일'};
+const START=8*60, END=21*60+30, PX=0.78;
+const norm=n=>n.replace(/^(505|760)[AB]$/,'$1');
+
+/* ---------- requirement data ---------- */
+const NY={
+  pr:['312'], lrwa:['406'], als:['475'],
+  bar:['403','404','413','476','202','205','211','230','295','300','309','311','317'],
+  barLLM2:['403','404','413','476'],
+  p1core:['746','763','785']
+};
+const TRACKS={
+  none:{name:'선택 안 함',en:'No specialization',sum:['특화 트랙 없이 자유롭게 수강']},
+  biz:{name:'비즈니스법',en:'Business Law – Business Law Track',sum:['필수: 220 연방소득세법 · 230 회사법','추가 2과목 (그룹 A 1개 이상)'],
+    A:['236','240','248','250','307'],
+    B:['222','244','261','285','286','302','303','305','306','348','363','380','403','413','419','422','430','433','434','435','437','447','480','484','490','491','544','575','621','648','652','693','707','732','744','751','759','763','785','802','907','972','987']},
+  tax:{name:'세법',en:'Business Law – Tax Track',sum:['필수: 220 · 230 · 430 또는 435','그룹 A 1과목'],
+    A:['222','285','363','380','403','413','430','433','435','648','751']},
+  tech:{name:'기술법',en:'Technology Law',sum:['그룹 A 2과목 이상','그룹 A+B 합계 4과목'],
+    A:['274','302','306','307','484','495'],
+    B:['216','240','301','304','305','391','421','422','437','453','489','509','538','544','586','658','683','760','766','769','802','901','902','905']},
+  mets:{name:'미디어·엔터·기술·스포츠',en:'Media, Entertainment, Technology & Sports (METS)',sum:['필수: 305 엔터테인먼트법','A-tier 1과목 (274 · 302 · 307)','B-tier 2과목, 합계 4학점 이상'],
+    AT:['274','302','307'],
+    BT:['213','274','301','302','303','304','306','307','328','357','364','391','421','433','437','453','480','481','482','484','495','683','769','785','902','972'],
+    SUP:['220','230','234','240','248','250','260']},
+  env:{name:'환경법',en:'Environmental Law',sum:['필수: 290 환경법과 정책 (가을)','그룹 A 3과목'],
+    A:['216','286','350','472','489','490','505','591','611','619','703','719','732','738','905','910','946']}
+};
+const POP={
+  'S769-1':'2026 졸업생이 꼽은 최고 강의','S437-1':'Doug Lichtman · 2026 졸업생 선정 최고 강의 교수','S480-1':'Ken Ziffren · 엔터 업계 대표 변호사',
+  'S391-1':'Michael Woronoff · Kirkland & Ellis 파트너','S484-1':'Andrew Selbst · AI Law 케이스북 공저자','S302-1':'Neil Netanel · 저작권법 석학',
+  'S312-2':'Adam Winkler · 헌법·법조윤리 인기 교수','S300-2':'Richard Hasen · 선거법 권위자','S322-1':'Richard Hasen · 선거법 권위자',
+  'S309-2':'Sharon Dolovich · 2026 졸업생 선정 최고 강의 교수','S629-1':'Sharon Dolovich · 2026 졸업생 선정 최고 강의 교수',
+  'S727-1':'Adam Winkler · 연방대법원 모의 변론·판결문 작성','S727-2':'Adam Winkler · 연방대법원 모의 변론·판결문 작성',
+  'S214-1':'Kimberlé Crenshaw · 2026 전미 법학자 피인용 4위','S318-1':'Cary Franklin · 2026 졸업생 선정 최고 강의 교수','S490-1':'Allan Marks · 2026 졸업생 선정 최고 강의 교수'
+};
+const PRE={
+  '391':{g:[['230'],['403','100']],co:false,t:'230 회사법과 403 계약법'},
+  '236':{g:[['230']],co:true,t:'230 회사법 (동시 수강 가능)'},
+  '491':{g:[['230']],co:false,t:'230 회사법'},'575':{g:[['230']],co:false,t:'230 회사법'},
+  '759':{g:[['230']],co:false,t:'230 회사법'},'802':{g:[['230']],co:false,t:'230 회사법'},
+  '907':{g:[['230']],co:false,t:'230 회사법'},'744':{g:[['230']],co:true,t:'230 회사법 (동시 수강 가능)'},
+  '430':{g:[['220']],co:false,t:'220 연방소득세법'},'435':{g:[['220']],co:false,t:'220 연방소득세법'},
+  '544':{g:[['240']],co:false,t:'240 독점규제법 (또는 교수 승인)'},
+  '421':{g:[['274','302','304','306','307']],co:true,t:'IP 과목 1개 (동시 수강 가능)'},
+  '286':{g:[['311']],co:false,t:'311 물권법'},'419':{g:[['311']],co:false,t:'311 물권법'},
+  '244':{g:[['305']],co:true,t:'305 엔터테인먼트법 (동시 수강 가능)'},
+  '987':{g:[['309']],co:false,t:'309 형법'},'902':{g:[['406']],co:false,t:'406 리서치·작문'},
+  '760B':{g:[['760A']],co:false,t:'가을 760A 특허 클리닉'},'505B':{g:[['505A']],co:false,t:'가을 505A'}
+};
+const EXCL=[['403','413'],['785','972'],['751','763']];
+const EXTRA_KO={'216':['행정법','Administrative Law'],'100':['계약법 (JD)','Contracts']};
+const KO={};FALL.concat(SPR).forEach(c=>{const n=c.no.replace(/^(505|760)[AB]$/,'$1');if(!KO[n])KO[n]=[c.ko.replace(/ \((가을|봄)\)$/,''),c.t.replace(/ \((Fall|Spring)\)$/,'')]});Object.assign(KO,EXTRA_KO);
+const GROUPDEF={
+  biz:[['필수','220 · 230 모두 이수',['220','230']],['그룹 A','추가 2과목 중 최소 1과목',null,'A'],['그룹 B','그룹 A와 합쳐 추가 2과목',null,'B']],
+  tax:[['필수','220 · 230 모두 이수',['220','230']],['필수 (택1)','430 또는 435 중 1과목',['430','435']],['그룹 A','1과목 (필수로 쓰지 않은 430·435 포함)',null,'A']],
+  tech:[['그룹 A','2과목 이상',null,'A'],['그룹 B','그룹 A와 합쳐 총 4과목',null,'B']],
+  mets:[['필수','305 엔터테인먼트법',['305']],['A-tier','1과목',null,'AT'],['B-tier','2과목, 합계 4학점 이상 (A-tier로 쓰지 않은 274·302·307 포함)',null,'BT'],['보조 추천','B-tier로 세지 않는 참고 과목',null,'SUP']],
+  env:[['필수','290 환경법과 정책 (가을에만 개설)',['290']],['그룹 A','3과목 이상',null,'A']]
+};
+
+/* ---------- state ---------- */
+const KEY='ucla-llm-planner-v2';
+const fresh=()=>({step:1,track:'none',ny:false,path:'45',lci:false,fall:['F470-1'],spring:[],fF:'all',fS:'all',hide:false});
+let S=fresh();
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&typeof s==='object')S=Object.assign(fresh(),s);}catch(e){}
+S.fall=S.fall.filter(k=>ALL[k]);S.spring=S.spring.filter(k=>ALL[k]);
+let qF='',qS='';
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const toMin=t=>{const m=t.match(/(\d+):(\d+)\s*(AM|PM)/);let h=+m[1]%12;if(m[3]==='PM')h+=12;return h*60+ +m[2];};
+const sh=t=>t.replace(':00','');
+const lbl=c=>c.no+(c.sec!=='1'||sameNoCount(c)>1?' §'+c.sec:'');
+const _cnt={};FALL.forEach(c=>{_cnt['F'+c.no]=(_cnt['F'+c.no]||0)+1});SPR.forEach(c=>{_cnt['S'+c.no]=(_cnt['S'+c.no]||0)+1});
+function sameNoCount(c){return _cnt[c.k[0]+c.no]||1}
+const meetTxt=c=>c.m.length?c.m.map(m=>`${[...m[0]].map(x=>DAYKO[x]||x).join('·')} ${sh(m[1])}–${sh(m[2])}`).join(' / '):'시간 미정';
+const isJ=c=>c.c==='J';
+const fmtU=u=>Number.isInteger(u)?String(u):String(u);
+
+function ctx(){
+  const f=S.fall.map(k=>ALL[k]), s=S.spring.map(k=>ALL[k]);
+  const fN=new Set(f.map(c=>norm(c.no))), sN=new Set(s.map(c=>norm(c.no)));
+  const fRaw=new Set(f.map(c=>c.no)), sRaw=new Set(s.map(c=>c.no));
+  const U={};f.concat(s).forEach(c=>{const n=norm(c.no);U[n]=Math.max(U[n]||0,c.u)});
+  const has=n=>fN.has(n)||sN.has(n);
+  return {f,s,fN,sN,fRaw,sRaw,U,has,units:n=>U[n]||0};
+}
+
+/* ---------- requirement engines ---------- */
+function evalTrack(x){
+  const id=S.track, T=TRACKS[id], out={checks:[],roles:{},need:new Set(),req:new Set(),notes:[]};
+  if(id==='none')return out;
+  const cnt=l=>l.filter(x.has).length;
+  const role=(l,r)=>l.forEach(n=>{out.roles[n]=out.roles[n]?out.roles[n]+'·'+r:r});
+  const ch=(ok,label,detail)=>out.checks.push({ok,label,detail});
+  if(id==='biz'){
+    role(['220','230'],'필수');role(T.A,'그룹 A');role(T.B,'그룹 B');
+    const a=cnt(T.A),b=cnt(T.B);
+    ch(x.has('220'),'220 연방소득세법');ch(x.has('230'),'230 회사법');
+    ch(a>=1,'그룹 A 1과목 이상',`현재 ${a}과목`);ch(a+b>=2,'추가 과목 2개 (A+B)',`현재 ${a+b}과목`);
+    ['220','230'].forEach(n=>{if(!x.has(n)){out.need.add(n);out.req.add(n)}});
+    if(a<1)T.A.forEach(n=>out.need.add(n));else if(a+b<2)T.A.concat(T.B).forEach(n=>out.need.add(n));
+  }
+  if(id==='tax'){
+    role(['220','230'],'필수');role(['430','435'],'필수(택1)');role(T.A,'그룹 A');
+    const rt=x.has('430')||x.has('435'), a=Math.max(0,cnt(T.A)-(rt?1:0));
+    ch(x.has('220'),'220 연방소득세법');ch(x.has('230'),'230 회사법');ch(rt,'430 조합과세 또는 435 법인세법');ch(a>=1,'그룹 A 1과목',`현재 ${a}과목`);
+    ['220','230'].forEach(n=>{if(!x.has(n)){out.need.add(n);out.req.add(n)}});
+    if(!rt){out.need.add('430');out.need.add('435');out.req.add('430');out.req.add('435');}
+    if(a<1)T.A.forEach(n=>out.need.add(n));
+  }
+  if(id==='tech'){
+    role(T.A,'그룹 A');role(T.B,'그룹 B');
+    const a=cnt(T.A),b=cnt(T.B);
+    ch(a>=2,'그룹 A 2과목 이상',`현재 ${a}과목`);ch(a+b>=4,'그룹 A+B 합계 4과목',`현재 ${a+b}과목`);
+    if(a<2)T.A.forEach(n=>out.need.add(n));else if(a+b<4)T.A.concat(T.B).forEach(n=>out.need.add(n));
+  }
+  if(id==='mets'){
+    role(['305'],'필수');role(T.BT,'B-tier');T.AT.forEach(n=>out.roles[n]='A-tier·B-tier');
+    const ap=T.AT.find(x.has), bl=T.BT.filter(n=>x.has(n)&&n!==ap), bu=bl.reduce((s,n)=>s+x.units(n),0);
+    ch(x.has('305'),'305 엔터테인먼트법');ch(!!ap,'A-tier 1과목',ap?`${ap} 이수`:'274 · 302 · 307 중 1개');
+    ch(bl.length>=2,'B-tier 2과목',`현재 ${bl.length}과목`);ch(bu>=4,'B-tier 합계 4학점 이상',`현재 ${bu}학점`);
+    if(!x.has('305')){out.need.add('305');out.req.add('305');}
+    if(!ap)T.AT.forEach(n=>out.need.add(n));
+    if(bl.length<2||bu<4)T.BT.forEach(n=>out.need.add(n));
+    out.notes.push('220 · 230 · 234 · 240 · 248 · 250 · 260은 보조 추천 과목입니다 (B-tier로 세지 않음).');
+  }
+  if(id==='env'){
+    role(['290'],'필수');role(T.A,'그룹 A');
+    const a=cnt(T.A);
+    ch(x.has('290'),'290 환경법과 정책',x.has('290')?'':'가을에만 개설 — 미이수 시 Graduate Studies 문의');
+    ch(a>=3,'그룹 A 3과목',`현재 ${a}과목`);
+    if(a<3)T.A.forEach(n=>out.need.add(n));
+    out.notes.push('환경법 관련 익스턴십은 지도교수 승인 시 그룹 A 1과목으로 인정됩니다.');
+  }
+  return out;
+}
+function evalNY(x){
+  const out={checks:[],roles:{},need:new Set(),recKeys:new Set(),tot:0,bar:0};
+  const all=x.f.concat(x.s); const seen=new Set(); let tot=0,deg=0;
+  all.forEach(c=>{const n=norm(c.no)+c.k[0];if(seen.has(n))return;seen.add(n);deg+=c.u;if(c.no!=='470')tot+=c.u;});
+  const bar=[...new Set(all.map(c=>c.no))].filter(n=>NY.bar.includes(n)).reduce((s,n)=>s+x.units(n),0);
+  out.tot=tot;out.bar=bar;out.deg=deg;
+  if(!S.ny)return out;
+  NY.pr.concat(NY.lrwa,NY.als).forEach(n=>out.roles[n]='뉴욕 바 필수');
+  NY.bar.forEach(n=>out.roles[n]=(out.roles[n]?out.roles[n]+'·':'')+'뉴욕 바 시험과목');
+  const pr=x.has('312'),lr=x.has('406'),al=x.has('475')||S.lci;
+  const ch=(ok,label,detail)=>out.checks.push({ok,label,detail});
+  ch(pr,'직업윤리 2학점','312');ch(lr,'리서치·작문 2학점','406');ch(al,'미국법 개론 2학점',S.lci?'475 (여름 LCI)':'475');
+  ch(bar>=6,'뉴욕 바 시험과목 6학점',`현재 ${bar}학점`);ch(tot>=24,'총 24학점 (470 제외)',`현재 ${tot}학점`);
+  if(!pr){out.need.add('312');out.recKeys.add('S312-4');}
+  if(!lr){out.need.add('406');out.recKeys.add('S406-1');}
+  if(!al){out.need.add('475');out.recKeys.add('S475-1');}
+  if(bar<6){
+    ['404','211'].forEach(n=>out.need.add(n));out.recKeys.add('S404-1');out.recKeys.add('S211-3');
+    if(!x.has('403')&&!x.has('413')){out.recKeys.add('S413-1');out.recKeys.add('S403-1');}
+  }
+  if(S.path==='1'){
+    NY.p1core.forEach(n=>out.roles[n]=(out.roles[n]?out.roles[n]+'·':'')+'Pathway 1');
+    const core=NY.p1core.some(x.has);
+    const expU=all.filter(c=>/^7\d\d/.test(c.no)||NY.p1core.includes(c.no)||/^(85|87)\d/.test(c.no)).reduce((s,c)=>s+c.u,0);
+    const lr2=new Set(all.filter(c=>/^[23]\d\d$/.test(c.no)).map(c=>c.no)).size;
+    ch(core,'Pathway 1: 746 · 763 · 785 중 1과목');ch(expU>=6,'Pathway 1: 실무 과목 6학점',`현재 ${expU}학점`);
+    ch(lr2>=2,'Pathway 1: 200–399번대 2과목',`현재 ${lr2}과목`);ch(x.has('470'),'Pathway 1: 470 이수');
+    ch(deg>=27,'Pathway 1: 총 27학점 (470 포함)',`현재 ${deg}학점`);
+    if(!core){out.need.add('763');out.need.add('785');out.recKeys.add('S763-2');out.recKeys.add('S785-1');}
+  }
+  return out;
+}
+
+/* ---------- conflicts ---------- */
+function overlap(a,b){
+  if(isJ(a)!==isJ(b))return false;
+  return a.m.some(p=>b.m.some(q=>[...p[0]].some(d=>q[0].includes(d))&&toMin(p[1])<toMin(q[2])&&toMin(q[1])<toMin(p[2])));
+}
+function clashPairs(list){const o=[];for(let i=0;i<list.length;i++)for(let j=i+1;j<list.length;j++)if(overlap(list[i],list[j]))o.push([list[i],list[j]]);return o;}
+
+/* ---------- tags ---------- */
+function courseTags(c,x,tr,ny,term){
+  const t=[], n=norm(c.no);
+  if(term==='S'&&tr.req.has(n)&&!x.has(n))t.push(['trkreq','트랙 필수']);
+  if(tr.roles[n])t.push(['trk',TRACKS[S.track].name+' '+tr.roles[n]]);
+  if(ny.roles[n]){ny.roles[n].split('·').forEach(r=>t.push([r==='뉴욕 바 필수'?'nyreq':r==='Pathway 1'?'p1':'nysub',r]))}
+  else if(!S.ny&&(NY.pr.concat(NY.lrwa,NY.als).includes(n)))t.push(['nyreq','뉴욕 바 필수']);
+  else if(!S.ny&&NY.bar.includes(n))t.push(['nysub','뉴욕 바 시험과목']);
+  if(c.f.includes('llm'))t.push(['llm','LL.M. 전용']);
+  if(c.f.includes('llmexp'))t.push(['llmexp','실무수습 · 지원 불필요']);
+  else if(c.f.includes('exp'))t.push(['exp','실무수습 · 별도 지원']);
+  if(c.f.includes('app'))t.push(['app','신청 강의']);
+  if(c.f.includes('extn'))t.push(['extn','익스턴십 승인 후 등록']);
+  if(c.f.includes('jd'))t.push(['jd','JD 우선 · 2차 신청']);
+  if(c.f.includes('l1'))t.push(['l1','1L 우선']);
+  if(c.f.includes('consent'))t.push(['consent','교수 동의 필요할 수 있음']);
+  if(isJ(c))t.push(['jterm','J-Term']);
+  return t;
+}
+const tagHTML=t=>t.map(([c,l])=>`<span class="tag t-${c}">${esc(l)}</span>`).join('');
+
+/* ---------- ledger ---------- */
+function check(ok,label,detail,wait){return `<li><span class="mark ${ok?'ok':wait?'wait':'no'}">${ok?'✓':wait?'·':'!'}</span><span>${esc(label)}${detail?`<span class="d">${esc(detail)}</span>`:''}</span></li>`;}
+function renderLedger(x,tr,ny){
+  const sU=x.s.reduce((a,c)=>a+c.u,0), sSem=x.s.filter(c=>!isJ(c)).reduce((a,c)=>a+c.u,0), fU=x.f.reduce((a,c)=>a+c.u,0);
+  const deg=ny.deg;
+  let h='';
+  h+=`<div class="card stat"><div class="head"><span class="lbl">학점</span><span class="pill ${deg>=22?'ok':'off'}">졸업 22</span></div>
+    <div class="big">${fmtU(deg)} <small>총 학점 (470 포함)</small></div>
+    <div class="bar"><i style="width:${Math.min(100,deg/30*100)}%;background:${deg>=22?'var(--ok)':'var(--accent)'}"></i><span class="tick" style="left:${22/30*100}%"></span></div>
+    <div class="small muted">가을 <b class="mono">${fmtU(fU)}</b> · 봄 <b class="mono">${fmtU(sU)}</b>${sU!==sSem?` (J-Term ${fmtU(sU-sSem)} 포함)`:''} · 봄 학기 8–14학점${sU>14?' <b style="color:var(--bad)">· 14학점 초과</b>':''}</div></div>`;
+  if(S.ny){
+    const done=ny.checks.filter(c=>c.ok).length;
+    h+=`<div class="card stat"><div class="head"><span class="lbl">뉴욕 바 · Rule 520.6</span><span class="pill ${done===ny.checks.length?'ok':'no'}">${done}/${ny.checks.length}</span></div>
+      <ul class="checks">${ny.checks.map(c=>check(c.ok,c.label,c.detail)).join('')}</ul></div>`;
+  }else{
+    h+=`<div class="card stat"><div class="head"><span class="lbl">뉴욕 바</span><span class="pill off">미설정</span></div>
+      <p class="empty-cta">뉴욕 바 응시 요건을 준비한다면 1단계에서 켜 주세요. 필수 과목과 시험과목 학점이 자동으로 계산됩니다.</p>
+      <div class="small muted">현재 뉴욕 바 기준 학점 (470 제외) <b class="mono">${fmtU(ny.tot)}</b> / 24</div>
+      <button class="linkbtn" type="button" data-go="1">뉴욕 바 설정하기 →</button></div>`;
+  }
+  if(S.track!=='none'){
+    const T=TRACKS[S.track],done=tr.checks.filter(c=>c.ok).length;
+    h+=`<div class="card stat"><div class="head"><span class="lbl">특화 트랙 · ${esc(T.name)}</span><span class="pill ${done===tr.checks.length?'ok':'no'}">${done}/${tr.checks.length}</span></div>
+      <ul class="checks">${tr.checks.map(c=>check(c.ok,c.label,c.detail)).join('')}${check(false,'트랙 과목 평균 B−(2.7) 이상','',true)}</ul>
+      ${tr.notes.map(n=>`<div class="small muted">${esc(n)}</div>`).join('')}</div>`;
+  }else{
+    h+=`<div class="card stat"><div class="head"><span class="lbl">특화 트랙</span><span class="pill off">선택 안 함</span></div>
+      <p class="empty-cta">비즈니스법 · 세법 · 기술법 · METS · 환경법 트랙을 신청했다면 1단계에서 고르세요. 필수·그룹 과목과 남은 요건이 표시됩니다.</p>
+      <button class="linkbtn" type="button" data-go="1">트랙 선택하기 →</button></div>`;
+  }
+  $('ledger').innerHTML=h;
+  $('s1sum').textContent=(S.track==='none'?'트랙 없음':TRACKS[S.track].name)+' · '+(S.ny?'뉴욕 바 준비':'뉴욕 바 미준비');
+  $('s2sum').textContent=`${x.f.length}과목 · ${fmtU(fU)}학점 체크`;
+  $('s3sum').textContent=`${x.s.length}과목 · ${fmtU(sU)}학점 배치`;
+}
+
+/* ---------- step 1 ---------- */
+function renderStep1(){
+  $('tracks').innerHTML=Object.entries(TRACKS).map(([id,T])=>`<div class="tcard" role="radio" tabindex="0" aria-checked="${S.track===id}" data-track="${id}">
+    <span class="radio" aria-hidden="true"></span><span class="tname">${esc(T.name)}</span><span class="ten">${esc(T.en)}</span>
+    <ul>${T.sum.map(s=>`<li>${esc(s)}</li>`).join('')}</ul></div>`).join('');
+  $('nyOff').setAttribute('aria-pressed',String(!S.ny));$('nyOn').setAttribute('aria-pressed',String(S.ny));
+  $('nyOpts').style.opacity=S.ny?'1':'.45';$('nyOpts').querySelectorAll('input').forEach(i=>i.disabled=!S.ny);
+  $('path45').checked=S.path!=='1';$('path1').checked=S.path==='1';$('lci').checked=!!S.lci;
+}
+
+/* ---------- catalogs ---------- */
+const GROUPS=[['LLM','LL.M. 전용 과목','외국 법학 학위자만 수강할 수 있는 분반입니다.'],['J','J-Term (1/4–1/14)','최대 2과목 · 3학점. 1·2차 수강신청 한도와 졸업·바 학점에는 포함됩니다.'],['ADV','일반 강의','JD·LL.M.이 함께 듣는 강의입니다.'],['SEM','세미나','소규모 · 페이퍼형이 많습니다.'],['CLIN','클리닉·실무수습·익스턴십','대부분 별도 지원(experiential ranking)이 필요합니다.'],['PER','독서 세미나 (Perspectives)','0.5–1학점 소규모 독서 모임입니다.']];
+function chipDefs(term,x,tr,ny){
+  const d=[['all','전체']];
+  if(term==='S'&&(S.track!=='none'||S.ny))d.push(['rec','★ 추천']);
+  if(S.track!=='none')d.push(['trk','내 트랙']);
+  d.push(['ny','뉴욕 바'],['llm','LL.M. 전용']);
+  if(term==='S')d.push(['pop','인기 강의'],['exp','지원 필요'],['J','J-Term']);
+  d.push(['on',term==='F'?'체크한 과목':'선택한 과목']);
+  return d;
+}
+function matches(c,f,term,tr,ny,recSet,x){
+  const n=norm(c.no);
+  switch(f){
+    case 'all':return true;
+    case 'on':return (term==='F'?S.fall:S.spring).includes(c.k);
+    case 'rec':return recSet.has(c.k);
+    case 'trk':return !!tr.roles[n];
+    case 'ny':return NY.pr.concat(NY.lrwa,NY.als,NY.bar).includes(n)||(S.path==='1'&&S.ny&&NY.p1core.includes(n));
+    case 'llm':return c.f.includes('llm');
+    case 'pop':return !!POP[c.k];
+    case 'exp':return c.f.includes('exp')||c.f.includes('app')||c.f.includes('extn')||c.f.includes('llmexp');
+    case 'J':return isJ(c);
+  }
+  return true;
+}
+function groupOf(c,term,tr,ny){
+  const n=norm(c.no);
+  if(S.track!=='none'&&tr.roles[n])return 'TRK';
+  if(S.ny&&(ny.roles[n]))return 'NY';
+  return c.c;
+}
+function renderCatalog(term,x,tr,ny,recSet,whySet,clashSet){
+  const list=term==='F'?FALL:SPR, sel=term==='F'?S.fall:S.spring, q=(term==='F'?qF:qS).trim().toLowerCase(), f=term==='F'?S.fF:S.fS;
+  const selC=sel.map(k=>ALL[k]);
+  const fallNos=x.fRaw;
+  const chips=chipDefs(term,x,tr,ny);
+  const counts={};chips.forEach(([v])=>counts[v]=list.filter(c=>matches(c,v,term,tr,ny,recSet,x)).length);
+  $(term==='F'?'chipsF':'chipsS').innerHTML=chips.map(([v,l])=>`<button type="button" class="chip" data-f="${v}" aria-pressed="${f===v}">${l}<span class="n">${counts[v]}</span></button>`).join('');
+  const groups=[];
+  if(S.track!=='none')groups.push(['TRK',`내 트랙 · ${TRACKS[S.track].name}`,term==='F'?'트랙 요건에 들어가는 가을 과목입니다.':'트랙 요건에 들어가는 봄 과목입니다. ★ 표시는 남은 요건을 채우면서 지금 시간표와 겹치지 않는 과목입니다.']);
+  if(S.ny)groups.push(['NY','뉴욕 바 과목',term==='F'?'뉴욕 바 필수 과목과 시험과목입니다.':'LL.M. 전용 분반은 자동 등록, JD 공동 분반은 2차 수강신청부터 잔여석에 등록합니다.']);
+  GROUPS.forEach(g=>{if(!(term==='F'&&g[0]==='J'))groups.push(g)});
+  let html='';
+  groups.forEach(([gid,gh,gp])=>{
+    let items=list.filter(c=>groupOf(c,term,tr,ny)===gid).filter(c=>matches(c,f,term,tr,ny,recSet,x)).filter(c=>!q||(c.no+' '+c.t+' '+c.ko+' '+c.p).toLowerCase().includes(q));
+    if(term==='S'&&S.hide)items=items.filter(c=>sel.includes(c.k)||!selC.some(o=>o.k!==c.k&&overlap(o,c)));
+    if(term==='S'&&gid==='TRK'){items.sort((a,b)=>(recSet.has(b.k)-recSet.has(a.k)));}
+    if(!items.length)return;
+    html+=`<div class="group-h"><h3>${esc(gh)} <span class="n">${items.length}</span></h3>${gp?`<p>${esc(gp)}</p>`:''}</div>`;
+    items.forEach(c=>{
+      const on=sel.includes(c.k);
+      let lock='';
+      if(term==='S'){
+        if(fallNos.has(c.no)&&!['561A','561B'].includes(c.no))lock='가을에 이미 이수';
+        else if((c.no==='413'&&fallNos.has('403'))||(c.no==='403'&&fallNos.has('413')))lock='403·413 중복 수강 불가';
+        else if(c.no==='785'&&x.sRaw.has('972')||c.no==='972'&&x.sRaw.has('785'))lock='785·972 중복 수강 불가';
+      }
+      const rec=recSet.has(c.k)&&!on, cl=clashSet.has(c.k);
+      const tags=courseTags(c,x,tr,ny,term);
+      if(rec)tags.unshift(['rec','★ 추천']);
+      if(POP[c.k])tags.push(['pop','인기 강의']);
+      if(lock)tags.unshift(['done',lock]);
+      html+=`<div class="course${on?' on':''}${cl?' conflict':''}${rec?' recd':''}" role="checkbox" aria-checked="${on}" tabindex="0" data-k="${c.k}" data-term="${term}">
+        <span class="box" aria-hidden="true">${on?'✓':''}</span>
+        <div style="min-width:0">
+          <div class="c-top"><span class="c-no">${esc(lbl(c))}</span><span class="c-ko">${esc(c.ko)}</span></div>
+          <div class="c-en">${esc(c.t)}</div>
+          <div class="c-meta"><span>${esc(c.ur)}학점</span><span>${esc(meetTxt(c))}</span><span>${esc(c.p)}</span>${term==='S'?`<span>기말 ${esc(c.ex==='Other'?'과제·기타':c.ex==='Paper'?'페이퍼':c.ex)}</span>`:''}</div>
+          ${rec&&whySet[c.k]?`<div class="c-why">★ ${esc(whySet[c.k])}</div>`:''}
+          ${POP[c.k]&&term==='S'?`<div class="c-pop">♦ ${esc(POP[c.k])}</div>`:''}
+          ${c.n?`<div class="c-note">${esc(c.n)}</div>`:''}
+          <div class="tags">${tagHTML(tags)}</div>
+        </div></div>`;
+    });
+  });
+  $(term==='F'?'catF':'catS').innerHTML=html||'<p class="muted" style="padding:16px">조건에 맞는 과목이 없습니다.</p>';
+}
+
+/* ---------- grid ---------- */
+function colorOf(c,tr,ny){
+  const n=norm(c.no);
+  if(S.track!=='none'&&tr.roles[n])return 'trk';
+  if(ny.roles[n]&&ny.roles[n].includes('필수'))return 'ny';
+  if(ny.roles[n])return 'nys';
+  if(c.f.includes('llm'))return 'llm';
+  return 'accent';
+}
+function legendHTML(){
+  const L=[];
+  if(S.track!=='none')L.push(['trk','내 트랙']);
+  L.push(['ny','뉴욕 바 필수'],['nys','뉴욕 바 시험과목'],['llm','LL.M. 전용'],['accent','기타']);
+  return L.map(([v,l])=>`<span><b style="background:var(--${v})"></b>${l}</span>`).join('');
+}
+function renderGrid(elId,courses,tr,ny,clashSet){
+  const H=(END-START)*PX;
+  let h='<div class="dh"></div>'+DAYS.map(d=>`<div class="dh">${DAYKO[d]}<small>${{M:'Mon',T:'Tue',W:'Wed',R:'Thu',F:'Fri'}[d]}</small></div>`).join('');
+  h+=`<div class="hours" style="height:${H}px">`;for(let hh=9;hh<=21;hh++)h+=`<span style="top:${(hh*60-START)*PX}px">${hh>12?hh-12:hh}${hh>=12?'p':'a'}</span>`;h+='</div>';
+  DAYS.forEach(d=>{
+    h+=`<div class="col" style="height:${H}px">`;for(let hh=9;hh<=21;hh++)h+=`<div class="hl" style="top:${(hh*60-START)*PX}px"></div>`;
+    const blocks=[];courses.forEach(c=>c.m.forEach(m=>{if(m[0].includes(d))blocks.push({c,s:toMin(m[1]),e:toMin(m[2]),m})}));
+    blocks.sort((a,b)=>a.s-b.s);
+    // lane layout for overlaps
+    const lanes=[];blocks.forEach(b=>{let i=0;while(lanes[i]&&lanes[i]>b.s)i++;lanes[i]=b.e;b.lane=i;});
+    blocks.forEach(b=>{b.n=Math.max(1,...blocks.filter(o=>o.s<b.e&&b.s<o.e).map(o=>o.lane+1))});
+    blocks.forEach(b=>{
+      const v=colorOf(b.c,tr,ny),w=100/b.n;
+      h+=`<div class="blk${clashSet.has(b.c.k)?' clash':''}" style="top:${(b.s-START)*PX}px;height:${(b.e-b.s)*PX}px;left:calc(${b.lane*w}% + 3px);width:calc(${w}% - 6px);background:var(--${v}-soft);border-color:var(--${v})" title="${esc(lbl(b.c)+' '+b.c.t+' · '+b.m[1]+'–'+b.m[2])}">
+        <span class="bn" style="color:var(--${v})">${esc(lbl(b.c))} · ${esc(b.c.ur)}u</span><span class="bt">${esc(b.c.ko)}</span><span class="bm">${sh(b.m[1])}–${sh(b.m[2])}</span></div>`;
+    });
+    if(!blocks.length)h+='<div class="free">수업 없음</div>';
+    h+='</div>';
+  });
+  $(elId).innerHTML=h;
+}
+
+/* ---------- step 2 / 3 ---------- */
+function renderStep2(x,tr,ny){
+  renderCatalog('F',x,tr,ny,new Set(),{},new Set());
+  $('legendF').innerHTML=legendHTML();
+  const reg=x.f.filter(c=>c.m.length);
+  renderGrid('ttF',reg,tr,ny,new Set(clashPairs(reg).flat().map(c=>c.k)));
+  const un=x.f.filter(c=>!c.m.length);
+  $('unschF').innerHTML=`<h3>시간 미정·별도 일정</h3>`+(un.length?`<ul>${un.map(c=>`<li><span class="mono">${esc(lbl(c))}</span> ${esc(c.ko)} · ${esc(c.ur)}학점${c.no==='470'?' <span class="muted">(뉴욕 바 학점 제외)</span>':''}</li>`).join('')}</ul>`:'<span class="muted">없음</span>');
+}
+function prereqWarn(x){
+  const o=[];
+  x.s.forEach(c=>{const p=PRE[c.no];if(!p)return;
+    const ok=p.g.every(g=>g.some(n=>x.fRaw.has(n)||x.fN.has(n)||(p.co&&(x.sRaw.has(n)||x.sN.has(n)))));
+    if(!ok)o.push(['warn',`${lbl(c)} ${c.ko}: 선수과목 ${p.t}이 필요합니다.`]);});
+  return o;
+}
+function renderStep3(x,tr,ny,recSet,whySet){
+  const reg=x.s.filter(c=>c.m.length&&!isJ(c)), jt=x.s.filter(c=>isJ(c)), un=x.s.filter(c=>!c.m.length&&!isJ(c));
+  const pairs=clashPairs(x.s.filter(c=>c.m.length));const clashSet=new Set(pairs.flat().map(c=>c.k));
+  renderCatalog('S',x,tr,ny,recSet,whySet,clashSet);
+  $('legendS').innerHTML=legendHTML()+'<span><b style="background:var(--rec)"></b>★ 추천 (과목 목록)</span>';
+  renderGrid('ttS',reg,tr,ny,clashSet);
+  $('jterm').innerHTML='<h3>J-Term (1/4–1/14)</h3>'+(jt.length?`<ul>${jt.map(c=>`<li><span class="mono">${esc(lbl(c))}</span> ${esc(c.ko)} · ${esc(c.ur)}학점 · ${esc(meetTxt(c))}</li>`).join('')}</ul>`:'<span class="muted small">선택한 J-Term 과목이 없습니다.</span>');
+  $('unschS').hidden=!un.length;
+  $('unschS').innerHTML='<h3>시간 미정·별도 일정</h3>'+`<ul>${un.map(c=>`<li><span class="mono">${esc(lbl(c))}</span> ${esc(c.ko)} · ${esc(c.ur)}학점</li>`).join('')}</ul>`;
+  const al=[];
+  pairs.forEach(([a,b])=>al.push(['bad',`${lbl(a)} ${a.ko}와 ${lbl(b)} ${b.ko}의 시간이 겹칩니다.`]));
+  const sc={};x.s.forEach(c=>sc[c.no]=(sc[c.no]||0)+1);Object.keys(sc).forEach(n=>{if(sc[n]>1)al.push(['bad',`${n} 과목을 두 분반 이상 골랐습니다. 한 분반만 수강할 수 있습니다.`])});
+  EXCL.forEach(([a,b])=>{if((x.has(a))&&(x.has(b)))al.push(['bad',`${a}와 ${b}는 함께 수강할 수 없습니다.`])});
+  x.s.forEach(c=>{if(x.fRaw.has(c.no)&&!['561A','561B'].includes(c.no))al.push(['bad',`${lbl(c)} ${c.ko}는 가을에 이미 이수했습니다.`])});
+  if(x.s.some(c=>c.no==='307')&&(x.has('302')||x.has('306')))al.push(['warn','307 지식재산권 개관은 302·306 이수자의 경우 교수 동의가 필요합니다.']);
+  if(jt.length>2||jt.reduce((s,c)=>s+c.u,0)>3)al.push(['bad','J-Term은 최대 2과목 · 3학점까지입니다.']);
+  const sU=x.s.reduce((s,c)=>s+c.u,0);if(sU>14)al.push(['bad',`봄학기 ${fmtU(sU)}학점으로 2차 수강신청 상한 14학점을 넘습니다.`]);
+  prereqWarn(x).forEach(w=>al.push(w));
+  $('alerts').innerHTML=al.map(([k,t])=>`<div class="alert ${k}"><span>${k==='bad'?'⚠':'ⓘ'}</span><span>${esc(t)}</span></div>`).join('');
+  // exams
+  const isD=e=>/^\d+\/\d+$/.test(e),dn=e=>{const[m,d]=e.split('/').map(Number);return m*31+d};
+  const dated=x.s.filter(c=>isD(c.ex)).sort((a,b)=>dn(a.ex)-dn(b.ex)),other=x.s.filter(c=>!isD(c.ex));
+  let h=dated.map((c,i)=>{const p=dated[i-1],q=dated[i+1];const tight=(p&&dn(c.ex)-dn(p.ex)<=1)||(q&&dn(q.ex)-dn(c.ex)<=1);
+    const[m,d]=c.ex.split('/').map(Number);const w=['일','월','화','수','목','금','토'][new Date(2027,m-1,d).getDay()];
+    return `<li class="${tight?'tight':''}"><span class="d">${c.ex} (${w})</span><span>${esc(lbl(c))} ${esc(c.ko)} · ${esc(c.ur)}학점</span></li>`}).join('');
+  h+=other.map(c=>`<li><span class="d muted">${c.ex==='Paper'?'페이퍼':'과제·기타'}</span><span>${esc(lbl(c))} ${esc(c.ko)}</span></li>`).join('');
+  $('exams').innerHTML=h||'<li><span class="d muted">—</span><span class="muted">선택한 과목이 없습니다.</span></li>';
+}
+
+function recommendations(x,tr,ny){
+  const rec=new Set(),why={};
+  const sel=x.s;
+  const free=c=>!sel.some(o=>overlap(o,c));
+  const ok=c=>!x.has(norm(c.no))&&!x.fRaw.has(c.no)&&free(c)&&!sel.includes(c)&&!(c.no==='413'&&x.has('403'))&&!(c.no==='403'&&x.has('413'));
+  SPR.forEach(c=>{
+    const n=norm(c.no);
+    if(S.track!=='none'&&tr.need.has(n)&&ok(c)&&!c.f.includes('extn')){
+      rec.add(c.k);why[c.k]=tr.req.has(n)?`${TRACKS[S.track].name} 트랙 필수 과목`:`${TRACKS[S.track].name} 트랙 남은 요건 (${tr.roles[n]})`;
+    }
+    if(S.ny&&ny.recKeys.has(c.k)&&ok(c)){
+      rec.add(c.k);const r=NY.pr.includes(n)?'직업윤리':NY.als.includes(n)?'미국법 개론':NY.lrwa.includes(n)?'리서치·작문':NY.p1core.includes(n)?'Pathway 1 과목':'시험과목 학점';
+      why[c.k]=(why[c.k]?why[c.k]+' · ':'')+`뉴욕 바 ${r} 요건`;
+    }
+  });
+  return {rec,why};
+}
+
+function renderSpringSum(x){
+  const reg=x.s.filter(c=>!isJ(c)),jt=x.s.filter(c=>isJ(c));
+  const rU=reg.reduce((a,c)=>a+c.u,0),jU=jt.reduce((a,c)=>a+c.u,0),tU=rU+jU;
+  const days=new Set();reg.forEach(c=>c.m.forEach(m=>[...m[0]].forEach(d=>{if(DAYS.includes(d))days.add(d)})));
+  const st=tU>14?['no','14학점 초과']:tU<8?['off','8학점 미만']:['ok','8–14학점 범위'];
+  $('springSum').innerHTML=`<span class="lbl">봄학기 총 학점</span>
+    <div class="bigS">${fmtU(tU)}<small>학점</small></div>
+    <span class="pill ${st[0]}" style="align-self:flex-start">${st[1]}</span>
+    <div class="rows"><span>정규 학기</span><span><b>${fmtU(rU)}</b>학점 · ${reg.length}과목</span>
+    <span>J-Term</span><span><b>${fmtU(jU)}</b>학점 · ${jt.length}과목</span>
+    <span>등교 요일</span><span>${days.size?DAYS.filter(d=>days.has(d)).map(d=>DAYKO[d]).join('·')+` (주 ${days.size}일)`:'—'}</span></div>`;
+}
+function renderGroupInfo(x,tr){
+  const body=$('giBody'),sub=$('giSub');
+  if(S.track==='none'){
+    sub.textContent='특화 트랙을 고르면 그룹별 과목이 표시됩니다';
+    body.innerHTML='<p class="muted small">1단계에서 특화 트랙을 선택하면 필수 · 그룹 A · 그룹 B 과목 목록과 이수 현황이 여기에 표시됩니다.</p><button class="linkbtn" type="button" data-go="1">트랙 선택하기 →</button>';
+    return;
+  }
+  const T=TRACKS[S.track];
+  sub.textContent=`${T.name} 트랙 · ${GROUPDEF[S.track].map(g=>g[0]).join(' · ')} 과목과 봄학기 개설 여부`;
+  const sp={};SPR.forEach(c=>{const n=norm(c.no);(sp[n]=sp[n]||[]).push(c)});
+  let h='<div class="gi-legend">초록색은 이미 이수했거나 봄에 선택한 과목, 흐린 색은 봄학기에 열리지 않는 과목입니다.</div>';
+  GROUPDEF[S.track].forEach(([name,rule,list,key])=>{
+    const nos=list||T[key];
+    const doneN=nos.filter(x.has).length;
+    h+=`<div class="gi-grp"><h4>${esc(name)} <span class="rule">${esc(rule)}</span><span class="pill ${doneN?'ok':'off'} st">이수·선택 ${doneN}</span></h4><div class="gi-list">`;
+    nos.forEach(n=>{
+      const k=KO[n]||[n,''],sc=sp[n]||[];
+      const taken=x.fN.has(n)?'가을 이수':x.sN.has(n)?'봄 선택':'';
+      const when=taken||(sc.length?'봄 개설 · '+(isJ(sc[0])?'J-Term':sc.map(c=>meetTxt(c)).slice(0,2).join(' | ')):'봄 미개설');
+      h+=`<div class="gi-c${taken?' done':''}${!taken&&!sc.length?' na':''}"><span class="no">${esc(n)}</span><span><span class="nm">${esc(k[0])}</span><span class="wh">${esc(when)}</span></span></div>`;
+    });
+    h+='</div></div>';
+  });
+  body.innerHTML=h;
+}
+function render(){
+  const x=ctx(),tr=evalTrack(x),ny=evalNY(x);
+  renderLedger(x,tr,ny);
+  document.querySelectorAll('.step').forEach(b=>b.toggleAttribute('aria-current',false));
+  document.querySelector(`.step[data-step="${S.step}"]`).setAttribute('aria-current','step');
+  ['1','2','3'].forEach(n=>$('step'+n).hidden=String(S.step)!==n);
+  if(S.step===1)renderStep1();
+  if(S.step===2)renderStep2(x,tr,ny);
+  if(S.step===3){const r=recommendations(x,tr,ny);renderSpringSum(x);renderGroupInfo(x,tr);renderStep3(x,tr,ny,r.rec,r.why);}
+  $('hideClash').checked=!!S.hide;
+  document.body.classList.toggle('s3',S.step===3);
+  {const sU=x.s.reduce((a,c)=>a+c.u,0);$('mbarU').innerHTML=`봄 <b>${fmtU(sU)}</b>학점 · ${x.s.length}과목`;}
+}
+function toggleCourse(k,term){
+  const c=ALL[k];const arr=term==='F'?S.fall:S.spring;
+  const i=arr.indexOf(k);
+  if(i>=0)arr.splice(i,1);
+  else{
+    if(term==='F'){for(let j=arr.length-1;j>=0;j--){if(ALL[arr[j]].no===c.no)arr.splice(j,1)}}
+    arr.push(k);
+  }
+  save();render();
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',e=>{
+  const go=e.target.closest('[data-go]');if(go){S.step=+go.dataset.go;save();render();window.scrollTo({top:0,behavior:'smooth'});return;}
+  const st=e.target.closest('.step');if(st){S.step=+st.dataset.step;save();render();return;}
+  const tc=e.target.closest('.tcard');if(tc){S.track=tc.dataset.track;save();render();return;}
+  const co=e.target.closest('.course');if(co){if(co.getAttribute('aria-disabled')==='true')return;toggleCourse(co.dataset.k,co.dataset.term);return;}
+  const ch=e.target.closest('.chip');if(ch){if(ch.parentElement.id==='chipsF')S.fF=ch.dataset.f;else S.fS=ch.dataset.f;save();render();return;}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!==' '&&e.key!=='Enter')return;
+  const el=e.target.closest('.course,.tcard');if(!el)return;e.preventDefault();
+  if(el.classList.contains('tcard')){S.track=el.dataset.track;save();render();const n=document.querySelector(`.tcard[data-track="${S.track}"]`);if(n)n.focus();return;}
+  if(el.getAttribute('aria-disabled')==='true')return;
+  const k=el.dataset.k,t=el.dataset.term;toggleCourse(k,t);const n=document.querySelector(`.course[data-k="${k}"]`);if(n)n.focus();
+});
+$('nyOn').addEventListener('click',()=>{S.ny=true;save();render();});
+$('nyOff').addEventListener('click',()=>{S.ny=false;save();render();});
+$('path45').addEventListener('change',()=>{S.path='45';save();render();});
+$('path1').addEventListener('change',()=>{S.path='1';save();render();});
+$('lci').addEventListener('change',e=>{S.lci=e.target.checked;save();render();});
+$('qF').addEventListener('input',e=>{qF=e.target.value;render();});
+$('qS').addEventListener('input',e=>{qS=e.target.value;render();});
+$('hideClash').addEventListener('change',e=>{S.hide=e.target.checked;save();render();});
+$('toGrid').addEventListener('click',()=>{const el=$('ttS').closest('.card');el.scrollIntoView({behavior:'smooth',block:'start'});});
+$('toCat').addEventListener('click',()=>{$('catS').closest('.card').scrollIntoView({behavior:'smooth',block:'start'});});
+$('clearS').addEventListener('click',()=>{S.spring=[];save();render();});
+let armed=false;
+$('resetBtn').addEventListener('click',e=>{
+  if(!armed){armed=true;e.target.textContent='한 번 더 누르면 초기화';setTimeout(()=>{armed=false;e.target.textContent='처음부터 다시'},3000);return;}
+  armed=false;e.target.textContent='처음부터 다시';S=fresh();qF='';qS='';$('qF').value='';$('qS').value='';save();render();
+});
+render();
+window.__planner={S:()=>S,ctx,evalTrack,evalNY,recommendations};
+})();
+</script>
+</body>
+</html>
