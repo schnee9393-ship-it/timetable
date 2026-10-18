@@ -275,7 +275,8 @@ footer{font-size:12px;color:var(--muted);text-align:center}
     <div class="panel-b"><div class="tracks" id="tracks" role="radiogroup" aria-label="특화 트랙"></div></div>
     <div class="panel-h" style="border-top:1px solid var(--line)">
       <h2>뉴욕 바 (New York Bar) 응시 요건</h2>
-      <p class="muted small">외국 법학 학위자는 Rule 520.6에 맞는 LL.M. 학점을 채워야 응시할 수 있습니다. 470(American Law in a Global Context)은 이 플래너에서 뉴욕 바 학점으로 세지 않습니다.</p>
+      <p class="muted small">외국 법학 학위자는 Rule 520.6에 맞는 LL.M. 학점을 채워야 응시할 수 있습니다.</p>
+      <div class="alert warn" style="margin-top:8px"><span>⚠️</span><span>학교 NY Bar Track 안내서는 24학점에서 <b>독립연구·로스쿨 밖 과목만</b> 제외하므로, 이 플래너는 470(American Law in a Global Context) 2학점을 <b>뉴욕 바 24학점에 포함</b>해 계산합니다. 다만 470은 학기 전 단기·P/U 과목이라 인정 여부가 명확히 적혀 있지 않습니다. <b>470 포함 여부는 Graduate Studies(Vic Telesino)에 꼭 다시 확인하세요.</b> 안전하게 가려면 470 없이도 24학점이 되도록 짜 두는 것이 좋습니다.</span></div>
     </div>
     <div class="panel-b nybox">
       <div style="display:flex;flex-direction:column;gap:12px">
@@ -298,7 +299,7 @@ footer{font-size:12px;color:var(--muted);text-align:center}
             <tr><td>리서치·작문 Legal Research, Writing &amp; Analysis</td><td class="mono">2</td><td>406 · 가을 (봄 1개 분반)</td></tr>
             <tr><td>미국법 개론 American Legal Studies</td><td class="mono">2</td><td>475 미국 헌법 · 가을·봄·여름 LCI</td></tr>
             <tr><td>뉴욕 바 시험과목 Bar Subjects</td><td class="mono">6</td><td>2학점 1개: 403 · 404 · 413 · 476<br>4학점 1개: 211 §3(봄) · 230 §3(가을)<br>JD 공동: 202 · 205 · 211 · 230 · 295 · 300 · 309 · 311 · 317</td></tr>
-            <tr><td>총 학점 (470 제외)</td><td class="mono">24</td><td>로스쿨 밖 과목·독립연구 제외</td></tr>
+            <tr><td>총 학점 (470 포함*)</td><td class="mono">24</td><td>로스쿨 밖 과목·독립연구 제외<br><span class="muted">* 470 인정 여부는 학교에 재확인 필요</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -534,17 +535,17 @@ function evalTrack(x){
 }
 function evalNY(x){
   const out={checks:[],roles:{},need:new Set(),recKeys:new Set(),tot:0,bar:0};
-  const all=x.f.concat(x.s); const seen=new Set(); let tot=0,deg=0;
-  all.forEach(c=>{const n=norm(c.no)+c.k[0];if(seen.has(n))return;seen.add(n);deg+=c.u;if(c.no!=='470')tot+=c.u;});
+  const all=x.f.concat(x.s); const seen=new Set(); let tot=0,deg=0,u470=0;
+  all.forEach(c=>{const n=norm(c.no)+c.k[0];if(seen.has(n))return;seen.add(n);deg+=c.u;tot+=c.u;if(c.no==='470')u470+=c.u;});
   const bar=[...new Set(all.map(c=>c.no))].filter(n=>NY.bar.includes(n)).reduce((s,n)=>s+x.units(n),0);
-  out.tot=tot;out.bar=bar;out.deg=deg;
+  out.tot=tot;out.bar=bar;out.deg=deg;out.u470=u470;
   if(!S.ny)return out;
   NY.pr.concat(NY.lrwa,NY.als).forEach(n=>out.roles[n]='뉴욕 바 필수');
   NY.bar.forEach(n=>out.roles[n]=(out.roles[n]?out.roles[n]+'·':'')+'뉴욕 바 시험과목');
   const pr=x.has('312'),lr=x.has('406'),al=x.has('475')||S.lci;
   const ch=(ok,label,detail)=>out.checks.push({ok,label,detail});
   ch(pr,'직업윤리 2학점','312');ch(lr,'리서치·작문 2학점','406');ch(al,'미국법 개론 2학점',S.lci?'475 (여름 LCI)':'475');
-  ch(bar>=6,'뉴욕 바 시험과목 6학점',`현재 ${bar}학점`);ch(tot>=24,'총 24학점 (470 제외)',`현재 ${tot}학점`);
+  ch(bar>=6,'뉴욕 바 시험과목 6학점',`현재 ${bar}학점`);ch(tot>=24,'총 24학점 (470 포함)',`현재 ${tot}학점`+(u470?` · 470 제외 시 ${tot-u470}학점${tot>=24&&tot-u470<24?' (부족)':''}`:''));
   if(!pr){out.need.add('312');out.recKeys.add('S312-4');}
   if(!lr){out.need.add('406');out.recKeys.add('S406-1');}
   if(!al){out.need.add('475');out.recKeys.add('S475-1');}
@@ -606,11 +607,12 @@ function renderLedger(x,tr,ny){
   if(S.ny){
     const done=ny.checks.filter(c=>c.ok).length;
     h+=`<div class="card stat"><div class="head"><span class="lbl">뉴욕 바 · Rule 520.6</span><span class="pill ${done===ny.checks.length?'ok':'no'}">${done}/${ny.checks.length}</span></div>
-      <ul class="checks">${ny.checks.map(c=>check(c.ok,c.label,c.detail)).join('')}</ul></div>`;
+      <ul class="checks">${ny.checks.map(c=>check(c.ok,c.label,c.detail)).join('')}</ul>
+      <div class="alert warn small" style="margin-top:8px"><span>⚠️</span><span>470을 24학점에 포함한 결과입니다. 470 인정 여부는 학교에 꼭 재확인하세요.${ny.u470&&ny.tot>=24&&ny.tot-ny.u470<24?' <b>470을 빼면 24학점에 '+fmtU(24-(ny.tot-ny.u470))+'학점 모자랍니다.</b>':''}</span></div></div>`;
   }else{
     h+=`<div class="card stat"><div class="head"><span class="lbl">뉴욕 바</span><span class="pill off">미설정</span></div>
       <p class="empty-cta">뉴욕 바 응시 요건을 준비한다면 1단계에서 켜 주세요. 필수 과목과 시험과목 학점이 자동으로 계산됩니다.</p>
-      <div class="small muted">현재 뉴욕 바 기준 학점 (470 제외) <b class="mono">${fmtU(ny.tot)}</b> / 24</div>
+      <div class="small muted">현재 뉴욕 바 기준 학점 (470 포함, 학교 재확인 필요) <b class="mono">${fmtU(ny.tot)}</b> / 24</div>
       <button class="linkbtn" type="button" data-go="1">뉴욕 바 설정하기 →</button></div>`;
   }
   if(S.track!=='none'){
@@ -762,7 +764,7 @@ function renderStep2(x,tr,ny){
   const reg=x.f.filter(c=>c.m.length);
   renderGrid('ttF',reg,tr,ny,new Set(clashPairs(reg).flat().map(c=>c.k)));
   const un=x.f.filter(c=>!c.m.length);
-  $('unschF').innerHTML=`<h3>시간 미정·별도 일정</h3>`+(un.length?`<ul>${un.map(c=>`<li><span class="mono">${esc(lbl(c))}</span> ${esc(c.ko)} · ${esc(c.ur)}학점${c.no==='470'?' <span class="muted">(뉴욕 바 학점 제외)</span>':''}</li>`).join('')}</ul>`:'<span class="muted">없음</span>');
+  $('unschF').innerHTML=`<h3>시간 미정·별도 일정</h3>`+(un.length?`<ul>${un.map(c=>`<li><span class="mono">${esc(lbl(c))}</span> ${esc(c.ko)} · ${esc(c.ur)}학점${c.no==='470'?' <span class="muted">(뉴욕 바 24학점 포함 · 학교 재확인 필요)</span>':''}</li>`).join('')}</ul>`:'<span class="muted">없음</span>');
 }
 function prereqWarn(x){
   const o=[];
